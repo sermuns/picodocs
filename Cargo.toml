@@ -1,0 +1,11 @@
+[package]
+name = "picodocs"
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/sermuns/picodocs"
+license-file = "LICENSE"
+keywords = ["documentation", "docs", "markdown", "static", "site", "generator"]
+categories = ["command-line-utilities", "web-programming::http-server"]
+include = ["src/**/*", "assets/**/*", "LICENSE", "README.md"]
+
+[dependencies]
