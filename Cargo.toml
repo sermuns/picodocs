@@ -12,10 +12,15 @@ include = ["src/**/*", "assets/**/*", "LICENSE", "README.md"]
 anyhow = "1"
 axum = "0.8"
 clap = { version = "4.5.40", features = ["derive"] }
+clap-serde-derive = "0.2.1"
+config = "0.15.11"
+figment = { version = "0.10.19", features = ["toml"] }
 markdown = "1.0.0"
 notify = "8.1.0"
 open = "5.3.2"
+serde = "1.0.219"
 tera = "1"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6.6", features = ["fs"] }
 tower-livereload = "0.9.6"
+twelf = "0.15.0"
