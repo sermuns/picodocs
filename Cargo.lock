@@ -1069,6 +1069,7 @@ dependencies = [
  "toml 0.9.0",
  "tower-http",
  "tower-livereload",
+ "walkdir",
 ]
 
 [[package]]
