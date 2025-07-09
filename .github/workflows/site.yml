@@ -5,8 +5,8 @@ on:
       - main
     paths: 
       - README.md
-      - assets/**
-      - media/**
+      - .github/workflows/site.yml
+  workflow_dispatch:
     
 jobs:
   deploy:
