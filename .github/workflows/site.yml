@@ -3,33 +3,29 @@ on:
   push:
     branches:
       - main
-    paths: 
+    paths:
       - README.md
       - .github/workflows/site.yml
   workflow_dispatch:
-    
+
 jobs:
   deploy:
     runs-on: ubuntu-24.04
     permissions:
-
       id-token: write # to use actions/deploy-pages
       pages: write # to push to a github pages site
     steps:
-
       - uses: actions/checkout@v4
 
       - uses: jdx/mise-action@v2
-        with: 
+        with:
           mise_toml: |
             [tools]
             "ubi:sermuns/meread" = "latest"
 
-      - run: meread README.md -e index.html
-
       - run: |
-          mkdir public
-          mv index.html public/
+          meread README.md -e public
+          install -D docs/banner.png public/docs/banner.png
 
       - uses: actions/configure-pages@v4
 
