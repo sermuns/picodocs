@@ -1,3 +1,6 @@
+> [!NOTE]
+> This project does not yet exist. The README below is speculative, stay tuned!
+
 <a href="https://github.com/sermuns/picodocs">
   <img src="docs/banner.png">
 </a>
@@ -19,11 +22,15 @@
 
 picodocs is a simple, fast and small static site generator for documentation written in Markdown.
 
-picodocs is inspired by [zola](https://github.com/getzola/zola), [MkDocs](https://github.com/mkdocs/mkdocs) and [mdBook](https://github.com/rust-lang/mdBook), though it
-
-I like and
-
 I love how documentation with MkDocs is a very non-intrusive thing to add to your existing codebase: just a `docs/` directory for the markdown content for configuration
+
+picodocs takes great inspiration from projects such as [zola](https://github.com/getzola/zola), [MkDocs](https://github.com/mkdocs/mkdocs) and [mdBook](https://github.com/rust-lang/mdBook), though it has a few key differences:
+
+- _Like_ zola and mdBook, picodocs written in Rust, which makes it very fast and small. It is also shipped as a single binary, so you can easily run it on any platform without worrying about dependencies.
+
+- _Unlike_ mdBook, a rendered picodocs site rendered site not split into numbered chapters, like a book. It is more similar to MkDocs, where the documentation is split into pages, which can be linked to each other.
+
+- _Like_
 
 ## Installation
 
