@@ -1,9 +1,12 @@
 use clap::{Parser, Subcommand};
 use confique::{Config, File, FileFormat, Partial};
+use pulldown_cmark::{Parser as MarkdownParser, html};
 use serde::Serialize;
+use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
-use tokio::fs as tokio_fs;
+use tera::Tera;
 use tokio::task::JoinSet;
 use walkdir::WalkDir;
 
@@ -78,20 +81,42 @@ async fn main() -> anyhow::Result<()> {
             println!("Building site with configuration: {:?}", config);
             let before_build = Instant::now();
 
+            if config.output_dir.exists() {
+                fs::remove_dir_all(&config.output_dir)?;
+            }
+            fs::create_dir_all(&config.output_dir)?;
+
+            let tera = Arc::new(Tera::new("templates/*.html")?);
+
             let mut tasks = JoinSet::new();
-            for entry in WalkDir::new(&config.docs_dir).follow_links((&config).follow_links) {
+            for entry in WalkDir::new(&config.docs_dir).follow_links(config.follow_links) {
                 let path = entry?.into_path();
                 if path.extension() != Some(std::ffi::OsStr::new("md")) {
                     continue;
                 }
 
-                let output_path = config
-                    .output_dir
-                    .join(path.file_stem().unwrap())
-                    .join("index.html");
-
+                let tera = Arc::clone(&tera);
+                let output_root = config.output_dir.clone();
                 tasks.spawn(async move {
-                    dbg!(path);
+                    let output_path = output_root
+                        .join(path.file_stem().unwrap())
+                        .join("index.html");
+
+                    let md_content = tokio::fs::read_to_string(&path).await.unwrap();
+                    let parser = MarkdownParser::new(&md_content);
+                    let mut html_output = String::new();
+                    html::push_html(&mut html_output, parser);
+
+                    let mut context = tera::Context::new();
+                    context.insert("content", &html_output);
+
+                    let rendered = tera.render("base.html", &context).unwrap();
+
+                    tokio::fs::create_dir_all(output_path.parent().unwrap())
+                        .await
+                        .unwrap();
+
+                    tokio::fs::write(output_path, rendered).await.unwrap();
                 });
             }
 
