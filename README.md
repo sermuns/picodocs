@@ -30,8 +30,6 @@ picodocs takes great inspiration from projects such as [zola](https://github.com
 
 - _Unlike_ mdBook, a rendered picodocs site rendered site not split into numbered chapters, like a book. It is more similar to MkDocs, where the documentation is split into pages, which can be linked to each other.
 
-- _Like_
-
 ## Installation
 
 ### From prebuilt binaries
