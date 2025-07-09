@@ -5,7 +5,7 @@
 <div align="center">
   <p>
   <em>
-      mkdocs, but smaller
+      mkdocs, but very fast and small
   </em>
   </p>
   <a href="https://github.com/sermuns/meread/releases/latest">
@@ -17,11 +17,11 @@
 
 ---
 
-MEREAD is a command-line tool for previewing Markdown files as they will be presented on GitHub, all completely locally and offline.
+picodocs is a simple, fast and small static site generator for documentation written in Markdown.
 
-## Motivation
+picodocs is inspired by [zola](https://github.com/getzola/zola), [MkDocs](https://github.com/mkdocs/mkdocs) and [mdBook](https://github.com/rust-lang/mdBook), though it 
 
-I like [MkDocs](https://github.com/mkdocs/mkdocs) and [mdBook](https://github.com/rust-lang/mdBook)
+I like  and 
 
 I love how documentation with MkDocs is a very non-intrusive thing to add to your existing codebase: just a `docs/` directory for the markdown content for configuration
 
@@ -31,11 +31,9 @@ I love how documentation with MkDocs is a very non-intrusive thing to add to you
 
 For each version, prebuilt binaries are automatically built for Linux, MacOS and Windows.
 
-- You can download and unpack the
-  latest release from the [releases page](https://github.com/sermuns/picodocs/releases/latest).
+- You can download and unpack the latest release from the [releases page](https://github.com/sermuns/picodocs/releases/latest).
 
 - Using [`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall)
-
   ```bash
   cargo binstall picodocs
   ```
