@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
 use confique::{Config, File, FileFormat, Partial};
+use once_cell::sync::Lazy;
 use pulldown_cmark::{Parser as MarkdownParser, html};
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
 use tera::Tera;
 use tokio::task::JoinSet;
@@ -63,6 +63,9 @@ struct Conf {
 
 type PartialConf = <Conf as Config>::Partial;
 
+static TERA: Lazy<Tera> =
+    Lazy::new(|| Tera::new("templates/*.html").expect("Failed to load templates"));
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -86,8 +89,6 @@ async fn main() -> anyhow::Result<()> {
             }
             fs::create_dir_all(&config.output_dir)?;
 
-            let tera = Arc::new(Tera::new("templates/*.html")?);
-
             let mut tasks = JoinSet::new();
             for entry in WalkDir::new(&config.docs_dir).follow_links(config.follow_links) {
                 let path = entry?.into_path();
@@ -95,7 +96,6 @@ async fn main() -> anyhow::Result<()> {
                     continue;
                 }
 
-                let tera = Arc::clone(&tera);
                 let output_root = config.output_dir.clone();
                 tasks.spawn(async move {
                     let output_path = output_root
@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
                     let mut context = tera::Context::new();
                     context.insert("content", &html_output);
 
-                    let rendered = tera.render("base.html", &context).unwrap();
+                    let rendered = TERA.render("base.html", &context).unwrap();
 
                     tokio::fs::create_dir_all(output_path.parent().unwrap())
                         .await

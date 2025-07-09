@@ -1061,6 +1061,7 @@ dependencies = [
  "clap",
  "confique",
  "notify",
+ "once_cell",
  "open",
  "pulldown-cmark",
  "serde",
