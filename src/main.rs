@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
-use config::Config;
+use confique::{Config, File, FileFormat, Partial};
+use serde::Serialize;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -20,19 +21,41 @@ enum Command {
 
     /// Dump the default configuration to a file
     Defaults {
-        #[arg()]
         output_path: PathBuf,
     },
 }
 
+#[derive(Config, Debug, Serialize)]
+struct Conf {
+    title: Option<String>,
+
+    icon: Option<PathBuf>,
+
+    #[config(default = "public")]
+    output_dir: PathBuf,
+}
+type PartialConf = <Conf as Config>::Partial;
+
 fn main() -> anyhow::Result<()> {
-    let _args = Args::parse();
+    let args = Args::parse();
 
-    let config = Config::builder()
-        .add_source(config::File::with_name("picodocs"))
-        .build()?;
+    let partial_conf: PartialConf = File::with_format(&args.config_path, FileFormat::Toml)
+        .required()
+        .load()?;
+    let config = Conf::from_partial(partial_conf.with_fallback(PartialConf::default_values()))?;
 
-    dbg!(config);
+    match args.command {
+        Command::Build {} => {
+            println!("Building the site!");
+            dbg!(config);
+        }
+        Command::Defaults { output_path } => {
+            let default_conf = Conf::from_partial(PartialConf::default_values())?;
+            let toml_string = toml::to_string(&default_conf)?;
+            std::fs::write(&output_path, toml_string)?;
+            println!("Default configuration written to {:?}", &output_path);
+        }
+    }
 
     Ok(())
 }
