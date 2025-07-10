@@ -1,46 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" href="{{ config.icon_path }}" />
+		<link rel="stylesheet" href="style.css" />
 
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon" href="/images/logo-no-bg.svg">
-    <link rel="stylesheet" href="/main.css">
+		<title>{% if title %}{{ title }} - {% endif %}{{ config.title }}</title>
+		<meta name="description" content="{{ config.description}}" />
+		<meta name="generator" content="picodocs" />
+	</head>
 
-    <link rel="preload" href="/fonts/cmunss.woff2" as="font" type="font/woff2" crossorigin>
-    <title>{% if page.title %}{{ page.title }} - {% endif %}{{ config.title }}</title>
-    <meta name="description" content="{% block description %}{{ config.description}}{% endblock %}">
-    <script src="/lightmode.js" defer></script>
-    <meta name="generator" content="Zola">
-</head>
+	<body>
+		<header>{{config.title}}</header>
 
-<body>
+		<main>
+			<div>{{ content | safe }}</div>
+		</main>
 
-    <nav role="navigation">
-        <input id="light-mode-checkbox" type="checkbox" style="visibility: hidden;">
-        <header>
-            <div>
-                <a id="banner" href="/" >
-                    <img src="/images/logo-no-bg.svg" alt="Lysators logga" height="200px">
-                    <b style="font-size: 2rem;">{{ config.title }}</b>
-                </a>
-            </div>
-        </header>
-    </nav>
-
-
-    <main>
-        <div>
-            {{ content | safe }}
-        </div>
-    </main>
-
-    <footer>
-        created with picodocs
-    </footer>
-
-</body>
-
+		<footer>created with picodocs</footer>
+	</body>
 </html>
-
-

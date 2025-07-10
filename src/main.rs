@@ -9,10 +9,7 @@ use axum::{
 };
 use clap::{Parser, Subcommand};
 use confique::{Config, File, FileFormat, Partial};
-use notify::{
-    EventKind, RecommendedWatcher, RecursiveMode, Watcher,
-    event::{AccessKind, ModifyKind},
-};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use once_cell::sync::Lazy;
 use pulldown_cmark::{Parser as MarkdownParser, html};
 use serde::Serialize;
@@ -63,7 +60,7 @@ struct Conf {
     title: Option<String>,
 
     /// Used as favicon, among other places
-    icon: Option<PathBuf>,
+    icon_path: Option<PathBuf>,
 
     description: Option<String>,
 
@@ -92,7 +89,6 @@ static TERA: Lazy<Tera> =
 /// A built HTML file, ready to be dumped into the output directory or served
 #[derive(Debug)]
 struct Page {
-    source_path: PathBuf,
     content: String,
     url_path: String,
 }
@@ -128,7 +124,6 @@ async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticA
 
         let config_for_task = Arc::clone(&config_arc);
 
-        // Clone these early so `path` is no longer borrowed when we move it later.
         let relative_path = source_path.strip_prefix(&config.docs_dir)?.to_owned();
 
         let url_path = relative_path.to_string_lossy().into_owned();
@@ -168,11 +163,7 @@ async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticA
                     url_path_buf.to_string_lossy().into_owned()
                 };
 
-                Ok(Page {
-                    source_path,
-                    content,
-                    url_path,
-                })
+                Ok(Page { content, url_path })
             });
         } else {
             static_asset_tasks.spawn(async move {
@@ -211,10 +202,7 @@ async fn serve_from_memory(
     Path(path): Path<String>,
     assets: axum::extract::Extension<AssetMap>,
 ) -> impl IntoResponse {
-    dbg!(&path);
-
-    let map = assets.read().await;
-    if let Some(asset) = map.get(&path) {
+    if let Some(asset) = assets.read().await.get(&path) {
         return match asset {
             InMemoryAsset::Page(p) => Response::builder()
                 .status(StatusCode::OK)
@@ -233,13 +221,12 @@ async fn serve_from_memory(
 
     Response::builder()
         .status(StatusCode::NOT_FOUND)
-        .body(Body::from(format!("Asset not found for path: {}", path)))
+        .body(Body::from(format!("{} not found", path)))
         .unwrap()
         .into_response()
 }
 
 async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Result<()> {
-    println!("Rebuilding in-memory assets...");
     let (html_pages, static_assets) = get_all_assets(config).await?;
 
     let mut map = HashMap::new();
@@ -349,8 +336,9 @@ async fn main() -> anyhow::Result<()> {
                     .expect("Failed to watch docs_dir");
 
                 while rx.recv().await.is_some() {
+                    println!("Detected change in docs directory, rebuilding...");
                     if let Err(e) = rebuild_in_memory_assets(&config_clone, &store_clone).await {
-                        eprintln!("Failed to rebuild in-memory assets: {:?}", e);
+                        eprintln!("Failed to rebuild in-memory assets: {e:?}");
                     }
                 }
             });
@@ -375,7 +363,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Defaults { output_path, force } => {
-            if output_path.exists() && (force == false) {
+            if output_path.exists() && !force {
                 return Err(anyhow::anyhow!(
                     "{:?} already exists. Aborting.",
                     &output_path

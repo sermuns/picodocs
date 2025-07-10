@@ -1,0 +1,6 @@
+body {
+	box-sizing: border-box;
+	padding: 1rem;
+	width: min(100%, 100ch);
+	margin: auto;
+}
