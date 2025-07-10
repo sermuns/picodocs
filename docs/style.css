@@ -1,6 +1,66 @@
+:root {
+	--foreground-color: #f3e5c2;
+	--background-color: #4f5d2f;
+	--darkest-color: color-mix(in srgb, var(--background-color) 60%, black 40%);
+	--link-color: color-mix(
+		in srgb,
+		var(--foreground-color) 70%,
+		var(--background-color) 10%
+	);
+	--line-thickness: round(0.3rem, 1px);
+	color: var(--foreground-color);
+	background-color: var(--background-color);
+	font-family: "HK Grotesk", sans-serif;
+}
+
 body {
 	box-sizing: border-box;
-	padding: 1rem;
+	margin: 0;
+	padding: 0.5rem 1rem;
+	height: 100vh;
+	display: grid;
+	grid-template-areas:
+		"header header"
+		"nav main"
+		"footer footer";
+	grid-template-columns: 1fr 3fr;
+	grid-template-rows: auto 1fr auto;
+}
+
+header {
+	grid-area: header;
+	display: flex;
+	padding: 0.5rem 1rem;
+	border-bottom: var(--line-thickness) solid var(--darkest-color);
+	> b {
+		font-size: 1.5rem;
+	}
+}
+
+nav {
+	grid-area: nav;
+	padding: 0.5rem;
+	display: flex;
+	flex-direction: column;
+	padding: 0.5rem 1rem;
+	border-right: var(--line-thickness) solid var(--darkest-color);
+}
+
+main {
+	grid-area: main;
+	padding: 0.5rem;
 	width: min(100%, 100ch);
-	margin: auto;
+}
+
+footer {
+	grid-area: footer;
+	text-align: center;
+	padding: 0.5rem 1rem;
+	padding-bottom: 0;
+	border-top: var(--line-thickness) solid var(--darkest-color);
+	font-size: 80%;
+}
+
+a {
+	color: var(--link-color);
 }

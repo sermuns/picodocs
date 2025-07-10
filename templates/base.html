@@ -12,12 +12,16 @@
 	</head>
 
 	<body>
-		<header>{{config.title}}</header>
+		<header>
+			<b>{{config.title}}</b>
+		</header>
 
-		<main>
-			<div>{{ content | safe }}</div>
-		</main>
+		<nav></nav>
 
-		<footer>created with picodocs</footer>
+		<main>{{ content | safe }}</main>
+
+		<footer>
+			created with <a href="https://github.com/sermuns/picodocs/">picodocs</a>
+		</footer>
 	</body>
 </html>
