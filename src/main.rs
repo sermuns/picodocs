@@ -131,7 +131,7 @@ async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticA
         // Clone these early so `path` is no longer borrowed when we move it later.
         let relative_path = source_path.strip_prefix(&config.docs_dir)?.to_owned();
 
-        let url_path = format!("/{}", relative_path.to_string_lossy());
+        let url_path = relative_path.to_string_lossy().into_owned();
 
         if source_path.extension() == Some(std::ffi::OsStr::new("md")) {
             html_page_tasks.spawn(async move {
@@ -211,41 +211,24 @@ async fn serve_from_memory(
     Path(path): Path<String>,
     assets: axum::extract::Extension<AssetMap>,
 ) -> impl IntoResponse {
-    let path = if path.is_empty() {
-        "index".to_string()
-    } else {
-        path
-    };
-    let normalized_path = if path.ends_with('/') {
-        path.trim_end_matches('/').to_string()
-    } else {
-        path.clone()
-    };
-
-    let lookup_paths = vec![
-        format!("{}/index", normalized_path),
-        normalized_path.clone(),
-        path.clone(),
-    ];
+    dbg!(&path);
 
     let map = assets.read().await;
-    for lookup in lookup_paths {
-        if let Some(asset) = map.get(&lookup) {
-            return match asset {
-                InMemoryAsset::Page(p) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", "text/html")
-                    .body(Body::from(p.content.clone()))
-                    .unwrap()
-                    .into_response(),
-                InMemoryAsset::Static(s) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", s.mime_type.as_ref())
-                    .body(Body::from(s.content.clone()))
-                    .unwrap()
-                    .into_response(),
-            };
-        }
+    if let Some(asset) = map.get(&path) {
+        return match asset {
+            InMemoryAsset::Page(p) => Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "text/html")
+                .body(Body::from(p.content.clone()))
+                .unwrap()
+                .into_response(),
+            InMemoryAsset::Static(s) => Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", s.mime_type.as_ref())
+                .body(Body::from(s.content.clone()))
+                .unwrap()
+                .into_response(),
+        };
     }
 
     Response::builder()
@@ -256,6 +239,7 @@ async fn serve_from_memory(
 }
 
 async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Result<()> {
+    println!("Rebuilding in-memory assets...");
     let (html_pages, static_assets) = get_all_assets(config).await?;
 
     let mut map = HashMap::new();
@@ -347,7 +331,7 @@ async fn main() -> anyhow::Result<()> {
                                 EventKind::Create(_)
                                 | EventKind::Remove(_)
                                 | EventKind::Modify(_) => {
-                                    let _ = tx.try_send(()); // only sends on significant events
+                                    let _ = tx.try_send(());
                                 }
                                 _ => {}
                             }
@@ -372,7 +356,14 @@ async fn main() -> anyhow::Result<()> {
             });
 
             let app = Router::new()
-                .route("/", get(serve_from_memory))
+                .route(
+                    "/",
+                    get({
+                        let assets = axum::extract::Extension(store.clone());
+                        || serve_from_memory(Path("".to_string()), assets)
+                    }),
+                )
+                .route("/{*path}", get(serve_from_memory))
                 .layer(axum::extract::Extension(store));
 
             let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
