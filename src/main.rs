@@ -132,7 +132,7 @@ async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticA
             html_page_tasks.spawn(async move {
                 let markdown_content = tokio::fs::read_to_string(&source_path)
                     .await
-                    .with_context(|| format!("Failed to read markdown file: {:?}", source_path))?;
+                    .with_context(|| format!("Failed to read markdown file: {source_path:?}"))?;
 
                 let mut rendered_content = String::new();
                 html::push_html(
@@ -145,7 +145,7 @@ async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticA
                 context.insert("content", &rendered_content);
 
                 let content = TERA.render("base.html", &context).with_context(|| {
-                    format!("Failed to render Tera template for file: {:?}", source_path)
+                    format!("Failed to render Tera template for file: {source_path:?}")
                 })?;
 
                 let file_stem = relative_path.file_stem().ok_or_else(|| {
@@ -169,7 +169,7 @@ async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticA
             static_asset_tasks.spawn(async move {
                 let content = tokio::fs::read(&source_path)
                     .await
-                    .with_context(|| format!("Failed to read static file: {:?}", source_path))?;
+                    .with_context(|| format!("Failed to read static file: {source_path:?}"))?;
 
                 let mime_type = mime_guess::from_path(&source_path).first_or_octet_stream();
 
@@ -221,7 +221,7 @@ async fn serve_from_memory(
 
     Response::builder()
         .status(StatusCode::NOT_FOUND)
-        .body(Body::from(format!("{} not found", path)))
+        .body(Body::from(format!("{path} not found")))
         .unwrap()
         .into_response()
 }
@@ -247,7 +247,7 @@ async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Re
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let config = if (&args.config_path).exists() {
+    let config = if args.config_path.exists() {
         let partial_conf: PartialConf = File::with_format(&args.config_path, FileFormat::Toml)
             .required()
             .load()?;
@@ -259,7 +259,7 @@ async fn main() -> anyhow::Result<()> {
     match args.command {
         Command::Build {} => {
             let before_build = Instant::now();
-            println!("Building site with configuration: {:?}", config);
+            println!("Building site with configuration: {config:?}");
 
             if config.output_dir.exists() {
                 tokio::fs::remove_dir_all(&config.output_dir)
@@ -276,24 +276,24 @@ async fn main() -> anyhow::Result<()> {
                 if let Some(parent) = output_path.parent() {
                     tokio::fs::create_dir_all(parent)
                         .await
-                        .with_context(|| format!("Failed to create directory: {:?}", parent))?;
+                        .with_context(|| format!("Failed to create directory: {parent:?}"))?;
                 }
                 tokio::fs::write(&output_path, page.content)
                     .await
-                    .with_context(|| format!("Failed to write HTML file: {:?}", output_path))?;
+                    .with_context(|| format!("Failed to write HTML file: {output_path:?}"))?;
             }
             for asset in static_assets {
                 let output_path = config
                     .output_dir
-                    .join(&asset.source_path.strip_prefix(&config.docs_dir)?);
+                    .join(asset.source_path.strip_prefix(&config.docs_dir)?);
                 if let Some(parent) = output_path.parent() {
                     tokio::fs::create_dir_all(parent)
                         .await
-                        .with_context(|| format!("Failed to create directory: {:?}", parent))?;
+                        .with_context(|| format!("Failed to create directory: {parent:?}"))?;
                 }
                 tokio::fs::write(&output_path, &asset.content)
                     .await
-                    .with_context(|| format!("Failed to write static asset: {:?}", output_path))?;
+                    .with_context(|| format!("Failed to write static asset: {output_path:?}"))?;
             }
             println!("Site built in {:?}", before_build.elapsed());
         }
