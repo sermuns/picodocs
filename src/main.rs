@@ -75,96 +75,114 @@ type PartialConf = <Conf as Config>::Partial;
 static TERA: Lazy<Tera> =
     Lazy::new(|| Tera::new("templates/*.html").expect("Failed to load templates"));
 
-/// A built HTML file, ready to be dumped into the output directory
+/// A built HTML file, ready to be dumped into the output directory or served
 #[derive(Debug)]
 struct Page {
-    source: PathBuf,
+    source_path: PathBuf,
     content: String,
+    url_path: String,
 }
 
-async fn get_built_pages(config: &Conf) -> anyhow::Result<Vec<Page>> {
-    let config_arc = Arc::new(config.clone());
+/// A static file (non-markdown) to be served or copied
+#[derive(Debug)]
+struct StaticAsset {
+    source_path: PathBuf,
+    url_path: String,
+    content: Vec<u8>,
+    mime_type: mime_guess::Mime,
+}
 
-    let mut tasks = JoinSet::new();
+async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticAsset>)> {
+    let config_arc = Arc::new(config.clone());
+    let mut html_page_tasks = JoinSet::new();
+    let mut static_asset_tasks = JoinSet::new();
 
     for entry in WalkDir::new(&config.docs_dir).follow_links(config.follow_links) {
-        let path = entry?.into_path();
-        if path.extension() != Some(std::ffi::OsStr::new("md")) {
+        let source_path = entry?.into_path();
+
+        if !source_path.is_file() {
             continue;
         }
 
         let config_for_task = Arc::clone(&config_arc);
-        tasks.spawn(async move {
-            let md_content = tokio::fs::read_to_string(&path)
-                .await
-                .with_context(|| format!("Failed to read markdown file: {:?}", path))?;
 
-            let parser = MarkdownParser::new(&md_content);
-            let mut html_output = String::new();
-            html::push_html(&mut html_output, parser);
+        // Clone these early so `path` is no longer borrowed when we move it later.
+        let relative_path = source_path.strip_prefix(&config.docs_dir)?.to_owned();
 
-            let mut context = tera::Context::new();
-            context.insert("config", &*config_for_task);
+        let url_path = format!("/{}", relative_path.to_string_lossy());
 
-            context.insert("content", &html_output);
+        if source_path.extension() == Some(std::ffi::OsStr::new("md")) {
+            html_page_tasks.spawn(async move {
+                let markdown_content = tokio::fs::read_to_string(&source_path)
+                    .await
+                    .with_context(|| format!("Failed to read markdown file: {:?}", source_path))?;
 
-            let rendered = TERA
-                .render("base.html", &context)
-                .with_context(|| format!("Failed to render Tera template for file: {:?}", path))?;
+                let mut rendered_content = String::new();
+                html::push_html(
+                    &mut rendered_content,
+                    MarkdownParser::new(&markdown_content),
+                );
 
-            Ok(Page {
-                source: path,
-                content: rendered,
-            })
-        });
+                let mut context = tera::Context::new();
+                context.insert("config", &*config_for_task);
+                context.insert("content", &rendered_content);
+
+                let content = TERA.render("base.html", &context).with_context(|| {
+                    format!("Failed to render Tera template for file: {:?}", source_path)
+                })?;
+
+                let file_stem = relative_path.file_stem().ok_or_else(|| {
+                    anyhow::anyhow!("Could not get file stem for {:?}", relative_path)
+                })?;
+
+                let url_path = if relative_path == PathBuf::from("index.md") {
+                    "".to_string()
+                } else {
+                    let parent_dir = relative_path.parent().unwrap_or_else(|| "".as_ref());
+
+                    let mut url_path_buf = PathBuf::new();
+                    url_path_buf.push(parent_dir);
+                    url_path_buf.push(file_stem);
+                    url_path_buf.to_string_lossy().into_owned()
+                };
+
+                Ok(Page {
+                    source_path,
+                    content,
+                    url_path,
+                })
+            });
+        } else {
+            static_asset_tasks.spawn(async move {
+                let content = tokio::fs::read(&source_path)
+                    .await
+                    .with_context(|| format!("Failed to read static file: {:?}", source_path))?;
+
+                let mime_type = mime_guess::from_path(&source_path).first_or_octet_stream();
+
+                Ok(StaticAsset {
+                    source_path,
+                    url_path,
+                    content,
+                    mime_type,
+                })
+            });
+        }
     }
 
-    let built_pages: Vec<Page> = tasks
+    let html_pages: Vec<Page> = html_page_tasks
         .join_all()
         .await
         .into_iter()
         .collect::<Result<_, anyhow::Error>>()?;
 
-    Ok(built_pages)
-}
+    let static_assets: Vec<StaticAsset> = static_asset_tasks
+        .join_all()
+        .await
+        .into_iter()
+        .collect::<Result<_, anyhow::Error>>()?;
 
-async fn write_pages_to_output_dir(
-    pages: &[Page],
-    output_dir: &PathBuf,
-    config: &Conf,
-) -> anyhow::Result<()> {
-    if output_dir.exists() {
-        std::fs::remove_dir_all(output_dir).with_context(|| {
-            format!(
-                "Failed to remove existing output directory: {:?}",
-                output_dir
-            )
-        })?;
-    }
-
-    for page in pages {
-        let relative_path = page.source.strip_prefix(&config.docs_dir)?;
-
-        let file_stem = relative_path
-            .file_stem()
-            .ok_or_else(|| anyhow::anyhow!("Could not get file stem for {:?}", relative_path))?;
-
-        let page_output_path = output_dir
-            .join(relative_path.parent().unwrap_or_else(|| "".as_ref()))
-            .join(file_stem)
-            .join("index.html");
-
-        if let Some(parent) = page_output_path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("Failed to create directory: {:?}", parent))?;
-        }
-
-        tokio::fs::write(&page_output_path, &page.content)
-            .await
-            .with_context(|| format!("Failed to write page to: {:?}", page_output_path))?;
-    }
-    Ok(())
+    Ok((html_pages, static_assets))
 }
 
 #[tokio::main]
@@ -183,21 +201,46 @@ async fn main() -> anyhow::Result<()> {
     match args.command {
         Command::Build {} => {
             let before_build = Instant::now();
+            println!("Building site with configuration: {:?}", config);
 
-            let built_pages = get_built_pages(&config).await?;
-            let output_dir = &config.output_dir;
-            write_pages_to_output_dir(&built_pages, output_dir, &config).await?;
+            if config.output_dir.exists() {
+                tokio::fs::remove_dir_all(&config.output_dir)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to remove output directory: {:?}", config.output_dir)
+                    })?;
+            }
 
-            println!(
-                "Site built to {:?} in {:?}",
-                output_dir,
-                before_build.elapsed()
-            );
+            let (html_pages, static_assets) = get_all_assets(&config).await?;
+
+            for page in html_pages {
+                let output_path = config.output_dir.join(&page.url_path).join("index.html");
+                if let Some(parent) = output_path.parent() {
+                    tokio::fs::create_dir_all(parent)
+                        .await
+                        .with_context(|| format!("Failed to create directory: {:?}", parent))?;
+                }
+                tokio::fs::write(&output_path, page.content)
+                    .await
+                    .with_context(|| format!("Failed to write HTML file: {:?}", output_path))?;
+            }
+            for asset in static_assets {
+                let output_path = config
+                    .output_dir
+                    .join(&asset.source_path.strip_prefix(&config.docs_dir)?);
+                if let Some(parent) = output_path.parent() {
+                    tokio::fs::create_dir_all(parent)
+                        .await
+                        .with_context(|| format!("Failed to create directory: {:?}", parent))?;
+                }
+                tokio::fs::write(&output_path, &asset.content)
+                    .await
+                    .with_context(|| format!("Failed to write static asset: {:?}", output_path))?;
+            }
+            println!("Site built in {:?}", before_build.elapsed());
         }
 
-        Command::Serve { address } => {
-            println!("Serving on {}", address);
-        }
+        Command::Serve { address } => {}
 
         Command::Defaults { output_path, force } => {
             if output_path.exists() && (force == false) {
@@ -206,9 +249,17 @@ async fn main() -> anyhow::Result<()> {
                     &output_path
                 ));
             }
+
             let default_conf = Conf::from_partial(PartialConf::default_values())?;
-            let toml_string = toml::to_string(&default_conf)?;
-            std::fs::write(&output_path, toml_string)?;
+
+            tokio::fs::write(&output_path, toml::to_string(&default_conf)?)
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to write default configuration to {:?}",
+                        &output_path
+                    )
+                })?;
             println!("Default configuration written to {:?}", &output_path);
         }
     }
