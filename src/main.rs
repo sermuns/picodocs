@@ -1,13 +1,27 @@
 use anyhow::Context;
+use axum::{
+    Router,
+    body::Body,
+    extract::Path,
+    http::{Response, StatusCode},
+    response::IntoResponse,
+    routing::get,
+};
 use clap::{Parser, Subcommand};
 use confique::{Config, File, FileFormat, Partial};
+use notify::{
+    EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+    event::{AccessKind, ModifyKind},
+};
 use once_cell::sync::Lazy;
 use pulldown_cmark::{Parser as MarkdownParser, html};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tera::Tera;
+use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use walkdir::WalkDir;
 
@@ -91,6 +105,14 @@ struct StaticAsset {
     content: Vec<u8>,
     mime_type: mime_guess::Mime,
 }
+
+#[derive(Debug)]
+enum InMemoryAsset {
+    Page(Page),
+    Static(StaticAsset),
+}
+
+type AssetMap = Arc<RwLock<HashMap<String, InMemoryAsset>>>;
 
 async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticAsset>)> {
     let config_arc = Arc::new(config.clone());
@@ -185,6 +207,71 @@ async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticA
     Ok((html_pages, static_assets))
 }
 
+async fn serve_from_memory(
+    Path(path): Path<String>,
+    assets: axum::extract::Extension<AssetMap>,
+) -> impl IntoResponse {
+    let path = if path.is_empty() {
+        "index".to_string()
+    } else {
+        path
+    };
+    let normalized_path = if path.ends_with('/') {
+        path.trim_end_matches('/').to_string()
+    } else {
+        path.clone()
+    };
+
+    let lookup_paths = vec![
+        format!("{}/index", normalized_path),
+        normalized_path.clone(),
+        path.clone(),
+    ];
+
+    let map = assets.read().await;
+    for lookup in lookup_paths {
+        if let Some(asset) = map.get(&lookup) {
+            return match asset {
+                InMemoryAsset::Page(p) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "text/html")
+                    .body(Body::from(p.content.clone()))
+                    .unwrap()
+                    .into_response(),
+                InMemoryAsset::Static(s) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", s.mime_type.as_ref())
+                    .body(Body::from(s.content.clone()))
+                    .unwrap()
+                    .into_response(),
+            };
+        }
+    }
+
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::from(format!("Asset not found for path: {}", path)))
+        .unwrap()
+        .into_response()
+}
+
+async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Result<()> {
+    let (html_pages, static_assets) = get_all_assets(config).await?;
+
+    let mut map = HashMap::new();
+
+    for page in html_pages {
+        map.insert(page.url_path.clone(), InMemoryAsset::Page(page));
+    }
+
+    for asset in static_assets {
+        map.insert(asset.url_path.clone(), InMemoryAsset::Static(asset));
+    }
+
+    *store.write().await = map;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -240,7 +327,61 @@ async fn main() -> anyhow::Result<()> {
             println!("Site built in {:?}", before_build.elapsed());
         }
 
-        Command::Serve { address } => {}
+        Command::Serve { address } => {
+            let config = Arc::new(config);
+            let docs_dir = config.docs_dir.clone();
+
+            let store: AssetMap = Arc::new(RwLock::new(HashMap::new()));
+            rebuild_in_memory_assets(&config, &store).await?;
+
+            let store_clone = Arc::clone(&store);
+            let config_clone = Arc::clone(&config);
+
+            tokio::spawn(async move {
+                let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+
+                let mut watcher = RecommendedWatcher::new(
+                    move |res: Result<notify::Event, notify::Error>| {
+                        if let Ok(event) = res {
+                            match &event.kind {
+                                EventKind::Create(_)
+                                | EventKind::Remove(_)
+                                | EventKind::Modify(_) => {
+                                    let _ = tx.try_send(()); // only sends on significant events
+                                }
+                                _ => {}
+                            }
+                        }
+                    },
+                    notify::Config::default()
+                        .with_poll_interval(Duration::from_secs(1))
+                        .with_compare_contents(true)
+                        .with_follow_symlinks(config.follow_links),
+                )
+                .expect("Failed to create file watcher");
+
+                watcher
+                    .watch(&docs_dir, RecursiveMode::Recursive)
+                    .expect("Failed to watch docs_dir");
+
+                while rx.recv().await.is_some() {
+                    if let Err(e) = rebuild_in_memory_assets(&config_clone, &store_clone).await {
+                        eprintln!("Failed to rebuild in-memory assets: {:?}", e);
+                    }
+                }
+            });
+
+            let app = Router::new()
+                .route("/", get(serve_from_memory))
+                .layer(axum::extract::Extension(store));
+
+            let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
+
+            println!("Serving at http://{}", &address);
+            axum::serve(listener, app)
+                .await
+                .context("Failed to start server")?;
+        }
 
         Command::Defaults { output_path, force } => {
             if output_path.exists() && (force == false) {
