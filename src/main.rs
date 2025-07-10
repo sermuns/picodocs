@@ -40,10 +40,14 @@ enum Command {
     /// Builds the site
     Build {},
 
-    /// Continually watches the docs directory for changes and rebuilds the site
+    /// Preview the site with a live-reloading server
     Serve {
         #[arg(short, long, default_value = "localhost:1809")]
         address: String,
+
+        /// Launch site in default browser
+        #[arg(long, short)]
+        open: bool,
     },
 
     /// Dump the default configuration to a file
@@ -300,7 +304,7 @@ async fn main() -> anyhow::Result<()> {
             println!("Site built in {:?}", before_build.elapsed());
         }
 
-        Command::Serve { address } => {
+        Command::Serve { address, open } => {
             let config = Arc::new(config);
             let docs_dir = config.docs_dir.clone();
 
@@ -312,16 +316,18 @@ async fn main() -> anyhow::Result<()> {
 
             let livereload_layer = LiveReloadLayer::new();
             let reloader = livereload_layer.reloader();
+            reloader.reload();
 
             tokio::spawn(async move {
                 let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+                let rt = tokio::runtime::Handle::current();
 
                 let mut debouncer = new_debouncer(
                     Duration::from_millis(250),
                     None,
                     move |result: DebounceEventResult| {
                         let tx = tx.clone();
-                        tokio::runtime::Handle::current().spawn(async move {
+                        rt.spawn(async move {
                             if match &result {
                                 Ok(events) => events.iter().any(|debounced_event| {
                                     matches!(
@@ -371,6 +377,11 @@ async fn main() -> anyhow::Result<()> {
             let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
 
             println!("Serving at http://{}", &address);
+            if open {
+                if let Err(e) = open::that(format!("http://{}", &address)) {
+                    eprintln!("Failed to open browser: {}", e);
+                }
+            }
             axum::serve(listener, app)
                 .await
                 .context("Failed to start server")?;
