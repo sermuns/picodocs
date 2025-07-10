@@ -9,7 +9,8 @@ use axum::{
 };
 use clap::{Parser, Subcommand};
 use confique::{Config, File, FileFormat, Partial};
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::RecursiveMode;
+use notify_debouncer_full::{DebounceEventResult, new_debouncer};
 use once_cell::sync::Lazy;
 use pulldown_cmark::{Parser as MarkdownParser, html};
 use serde::Serialize;
@@ -20,6 +21,7 @@ use std::time::{Duration, Instant};
 use tera::Tera;
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
+use tower_livereload::LiveReloadLayer;
 use walkdir::WalkDir;
 
 #[derive(Debug, Parser)]
@@ -308,30 +310,39 @@ async fn main() -> anyhow::Result<()> {
             let store_clone = Arc::clone(&store);
             let config_clone = Arc::clone(&config);
 
+            let livereload_layer = LiveReloadLayer::new();
+            let reloader = livereload_layer.reloader();
+
             tokio::spawn(async move {
                 let (tx, mut rx) = tokio::sync::mpsc::channel(1);
 
-                let mut watcher = RecommendedWatcher::new(
-                    move |res: Result<notify::Event, notify::Error>| {
-                        if let Ok(event) = res {
-                            match &event.kind {
-                                EventKind::Create(_)
-                                | EventKind::Remove(_)
-                                | EventKind::Modify(_) => {
-                                    let _ = tx.try_send(());
+                let mut debouncer = new_debouncer(
+                    Duration::from_millis(250),
+                    None,
+                    move |result: DebounceEventResult| {
+                        let tx = tx.clone();
+                        tokio::runtime::Handle::current().spawn(async move {
+                            if match &result {
+                                Ok(events) => events.iter().any(|debounced_event| {
+                                    matches!(
+                                        debounced_event.event.kind,
+                                        notify::EventKind::Create(_)
+                                            | notify::EventKind::Modify(_)
+                                            | notify::EventKind::Remove(_)
+                                    )
+                                }),
+                                _ => false,
+                            } {
+                                if let Err(e) = tx.send(result).await {
+                                    println!("Error sending event result: {:?}", e);
                                 }
-                                _ => {}
                             }
-                        }
+                        });
                     },
-                    notify::Config::default()
-                        .with_poll_interval(Duration::from_secs(1))
-                        .with_compare_contents(true)
-                        .with_follow_symlinks(config.follow_links),
                 )
                 .expect("Failed to create file watcher");
 
-                watcher
+                debouncer
                     .watch(&docs_dir, RecursiveMode::Recursive)
                     .expect("Failed to watch docs_dir");
 
@@ -339,7 +350,9 @@ async fn main() -> anyhow::Result<()> {
                     println!("Detected change in docs directory, rebuilding...");
                     if let Err(e) = rebuild_in_memory_assets(&config_clone, &store_clone).await {
                         eprintln!("Failed to rebuild in-memory assets: {e:?}");
+                        continue;
                     }
+                    reloader.reload()
                 }
             });
 
@@ -352,7 +365,8 @@ async fn main() -> anyhow::Result<()> {
                     }),
                 )
                 .route("/{*path}", get(serve_from_memory))
-                .layer(axum::extract::Extension(store));
+                .layer(axum::extract::Extension(store))
+                .layer(livereload_layer);
 
             let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
 
