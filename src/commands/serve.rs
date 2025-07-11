@@ -64,15 +64,15 @@ async fn serve_from_memory(
 async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Result<()> {
     let (html_pages, static_assets) = get_all_assets(config).await?;
 
-    let mut map = HashMap::new();
-
-    for page in html_pages {
-        map.insert(page.url_path.clone(), InMemoryAsset::Page(page));
-    }
-
-    for asset in static_assets {
-        map.insert(asset.url_path.clone(), InMemoryAsset::Static(asset));
-    }
+    let map: HashMap<_, _> = html_pages
+        .into_iter()
+        .map(|page| (page.url_path.clone(), InMemoryAsset::Page(page)))
+        .chain(
+            static_assets
+                .into_iter()
+                .map(|asset| (asset.url_path.clone(), InMemoryAsset::Static(asset))),
+        )
+        .collect();
 
     *store.write().await = map;
     Ok(())
