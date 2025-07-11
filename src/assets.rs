@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use pulldown_cmark::{Parser as MarkdownParser, html};
 use std::path::{Path, PathBuf};
 use tera::Tera;
-use tokio::task::JoinSet;
+use tokio::{task::JoinSet, try_join};
 use walkdir::WalkDir;
 
 use crate::config::Conf;
@@ -121,19 +121,22 @@ pub async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<Sta
         }
     }
 
-    let html_pages: Vec<Page> = html_page_tasks
-        .join_all()
-        .await
-        .into_iter()
-        .collect::<Result<_, anyhow::Error>>()
-        .context("Failed to process one or more HTML pages")?;
-
-    let static_assets: Vec<StaticAsset> = static_asset_tasks
-        .join_all()
-        .await
-        .into_iter()
-        .collect::<Result<_, anyhow::Error>>()
-        .context("Failed to process one or more static assets")?;
-
-    Ok((html_pages, static_assets))
+    Ok(try_join!(
+        async {
+            html_page_tasks
+                .join_all()
+                .await
+                .into_iter()
+                .collect::<Result<_, anyhow::Error>>()
+                .context("Failed to process one or more HTML pages")
+        },
+        async {
+            static_asset_tasks
+                .join_all()
+                .await
+                .into_iter()
+                .collect::<Result<_, anyhow::Error>>()
+                .context("Failed to process one or more static assets")
+        },
+    )?)
 }
