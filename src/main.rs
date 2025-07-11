@@ -19,6 +19,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tera::Tera;
+use time::macros::format_description;
+use time::{OffsetDateTime, format_description::BorrowedFormatItem};
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tower_livereload::LiveReloadLayer;
@@ -94,6 +96,9 @@ type PartialConf = <Conf as Config>::Partial;
 
 static TERA: Lazy<Tera> =
     Lazy::new(|| Tera::new("templates/*.html").expect("Failed to load templates"));
+
+const SIMPLE_TIME_FORMAT: &[BorrowedFormatItem<'_>] =
+    format_description!("[hour]:[minute]:[second]");
 
 /// A built HTML file, ready to be dumped into the output directory or served
 #[derive(Debug)]
@@ -360,7 +365,7 @@ async fn main() -> anyhow::Result<()> {
                                 _ => false,
                             } {
                                 if let Err(e) = tx.send(result).await {
-                                    println!("Error sending event result: {:?}", e);
+                                    println!("Error sending event result: {e:?}");
                                 }
                             }
                         });
@@ -373,7 +378,12 @@ async fn main() -> anyhow::Result<()> {
                     .expect("Failed to watch docs_dir");
 
                 while rx.recv().await.is_some() {
-                    println!("Detected change in docs directory, rebuilding...");
+                    let now = OffsetDateTime::now_local()
+                        .unwrap_or(OffsetDateTime::now_utc())
+                        .time()
+                        .format(SIMPLE_TIME_FORMAT)
+                        .unwrap();
+                    println!("[{now}] Detected change in docs directory, rebuilding...");
                     if let Err(e) = rebuild_in_memory_assets(&config_clone, &store_clone).await {
                         eprintln!("Failed to rebuild in-memory assets: {e:?}");
                         continue;
@@ -399,7 +409,7 @@ async fn main() -> anyhow::Result<()> {
             println!("Serving at http://{}", &address);
             if open {
                 if let Err(e) = open::that(format!("http://{}", &address)) {
-                    eprintln!("Failed to open browser: {}", e);
+                    eprintln!("Failed to open browser: {e}");
                 }
             }
             axum::serve(listener, app)
