@@ -23,8 +23,11 @@
 	font-family: "Hanken Grotesk", sans-serif;
 }
 
-body {
+* {
 	box-sizing: border-box;
+}
+
+body {
 	margin: 0;
 	height: 100vh;
 	display: grid;
@@ -94,6 +97,7 @@ main {
 	box-sizing: border-box;
 	grid-area: main;
 	width: min(100%, 60rem);
+	min-width: 0;
 	padding: 1rem;
 }
 
@@ -140,6 +144,15 @@ img {
 	height: auto;
 	display: block;
 	margin: 0 auto;
+}
+
+code {
+	font-family: "JetBrains Mono";
+}
+
+pre {
+	overflow-x: auto;
+	max-width: 100%;
 }
 
 /* * + h1, */
