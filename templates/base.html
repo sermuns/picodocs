@@ -4,9 +4,9 @@
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 
-		{%if config.icon_path%}<link rel="icon" href="ant.svg">{%endif%}
+		{%if config.icon_path%}<link rel="icon" href="/{{config.icon_path}}">{%endif%}
 
-		<link rel="stylesheet" href="style.css" />
+		<link rel="stylesheet" href="/style.css" />
 		{% if config.description %}
 		<meta name="description" content="{{config.description}}" />
 		{% endif %}
@@ -16,7 +16,7 @@
 
 	<body>
 		<header>
-			<a href="/">{%if config.icon_path%}<img src="{{config.icon_path}}" width="30" />{%endif%}{{config.title}}</a>
+			<a href="/">{%if config.icon_path%}<img src="/{{config.icon_path}}" width="30" />{%endif%}{{config.title}}</a>
 		</header>
 
 		<nav>
@@ -28,7 +28,10 @@
 			<a href="/">start</a>
 		</nav>
 
-		<main>{{ content | safe }}</main>
+		<main>
+			{{ content | safe }}
+			{{ current_path }}
+		</main>
 
 		<footer>
 			created with <a href="https://github.com/sermuns/picodocs/">picodocs</a>

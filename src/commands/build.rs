@@ -22,7 +22,7 @@ pub async fn run(config: Conf) -> anyhow::Result<()> {
     let (html_pages, static_assets) = assets::get_all_assets(&config).await?;
 
     for page in html_pages {
-        let output_path = config.output_dir.join(&page.url_path).join("index.html");
+        let output_path = config.output_dir.join(&page.url_path);
         if let Some(parent) = output_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -33,16 +33,7 @@ pub async fn run(config: Conf) -> anyhow::Result<()> {
             .with_context(|| format!("Failed to write HTML file: {output_path:?}"))?;
     }
     for asset in static_assets {
-        let output_path_relative = asset
-            .source_path
-            .strip_prefix(&config.docs_dir)
-            .with_context(|| {
-                format!(
-                    "Failed to strip prefix from path {:?} with docs_dir {:?}",
-                    asset.source_path, config.docs_dir
-                )
-            })?;
-        let output_path = config.output_dir.join(output_path_relative);
+        let output_path = config.output_dir.join(asset.url_path);
 
         if let Some(parent) = output_path.parent() {
             tokio::fs::create_dir_all(parent)

@@ -31,33 +31,38 @@ async fn serve_from_memory(
     Path(path): Path<String>,
     assets: axum::extract::Extension<AssetMap>,
 ) -> impl IntoResponse {
-    let requested_path = if path.is_empty() {
-        "".to_string()
+    dbg!(&path);
+
+    // FIXME: this is horrible, i think
+    let path = if path.is_empty() {
+        "index.html".to_string()
+    } else if !path.contains('.') {
+        format!("{}/index.html", path)
     } else {
         path
     };
 
-    if let Some(asset) = assets.read().await.get(&requested_path) {
+    if let Some(asset) = assets.read().await.get(&path) {
         return match asset {
             InMemoryAsset::Page(p) => Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "text/html")
                 .body(Body::from(p.content.clone()))
-                .unwrap() // Unwrap is fine here, construction errors are programmer errors
+                .unwrap()
                 .into_response(),
             InMemoryAsset::Static(s) => Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", s.mime_type.as_ref())
                 .body(Body::from(s.content.clone()))
-                .unwrap() // Unwrap is fine here, construction errors are programmer errors
+                .unwrap()
                 .into_response(),
         };
     }
 
     Response::builder()
         .status(StatusCode::NOT_FOUND)
-        .body(Body::from(format!("{requested_path} not found")))
-        .unwrap() // Unwrap is fine here, construction errors are programmer errors
+        .body(Body::from(format!("{path} not found")))
+        .unwrap()
         .into_response()
 }
 
@@ -120,7 +125,7 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
                 });
             },
         )
-        .context("Failed to create file watcher")?; // This panic will be caught by anyhow
+        .context("Failed to create file watcher")?;
 
         debouncer
             .watch(&docs_dir, RecursiveMode::Recursive)
@@ -128,7 +133,7 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
 
         while rx.recv().await.is_some() {
             let now = OffsetDateTime::now_local()
-                .unwrap_or(OffsetDateTime::now_utc()) // Fallback to UTC if local fails
+                .unwrap_or(OffsetDateTime::now_utc())
                 .time()
                 .format(SIMPLE_TIME_FORMAT)
                 .context("Failed to format time for log output")?;
@@ -139,7 +144,7 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
             }
             reloader.reload();
         }
-        Ok::<(), anyhow::Error>(()) // Explicitly return Ok to satisfy tokio::spawn's return type
+        Ok::<(), anyhow::Error>(())
     });
 
     let app = Router::new()

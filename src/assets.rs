@@ -1,7 +1,8 @@
 use anyhow::Context;
 use once_cell::sync::Lazy;
 use pulldown_cmark::{Parser as MarkdownParser, html};
-use std::path::{Path, PathBuf};
+use std::fmt;
+use std::path::PathBuf;
 use tera::Tera;
 use tokio::{task::JoinSet, try_join};
 use walkdir::WalkDir;
@@ -12,16 +13,13 @@ static TERA: Lazy<Tera> =
     Lazy::new(|| Tera::new("templates/*.html").expect("Failed to load templates"));
 
 /// A built HTML file, ready to be dumped into the output directory or served
-#[derive(Debug)]
 pub struct Page {
     pub content: String,
     pub url_path: String,
 }
 
 /// A static file (non-markdown) to be served or copied
-#[derive(Debug)]
 pub struct StaticAsset {
-    pub source_path: PathBuf,
     pub url_path: String,
     pub content: Vec<u8>,
     pub mime_type: mime_guess::Mime,
@@ -31,6 +29,25 @@ pub struct StaticAsset {
 pub enum InMemoryAsset {
     Page(Page),
     Static(StaticAsset),
+}
+
+impl fmt::Debug for Page {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Page")
+            .field("url_path", &self.url_path)
+            .field("content", &"<redacted>")
+            .finish()
+    }
+}
+
+impl fmt::Debug for StaticAsset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StaticAsset")
+            .field("url_path", &self.url_path)
+            .field("content", &format!("<{} bytes>", self.content.len()))
+            .field("mime_type", &self.mime_type)
+            .finish()
+    }
 }
 
 pub async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticAsset>)> {
@@ -64,8 +81,6 @@ pub async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<Sta
             })?
             .to_owned();
 
-        let url_path = relative_path.to_string_lossy().into_owned();
-
         if source_path.extension() == Some(std::ffi::OsStr::new("md")) {
             html_page_tasks.spawn(async move {
                 let markdown_content = tokio::fs::read_to_string(&source_path)
@@ -78,30 +93,33 @@ pub async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<Sta
                     MarkdownParser::new(&markdown_content),
                 );
 
+                let url_path = if relative_path == PathBuf::from("index.md") {
+                    "".to_string()
+                } else {
+                    relative_path
+                        .file_stem()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
+                };
+
                 let mut context = tera::Context::new();
                 context.insert("config", &*config_for_task);
+                context.insert("current_path", &url_path);
                 context.insert("content", &rendered_content);
 
                 let content = TERA.render("base.html", &context).with_context(|| {
                     format!("Failed to render Tera template for file: {source_path:?}")
                 })?;
 
-                let file_stem = relative_path.file_stem().ok_or_else(|| {
-                    anyhow::anyhow!("Could not get file stem for {:?}", relative_path)
-                })?;
-
-                let url_path = if relative_path == PathBuf::from("index.md") {
-                    "".to_string()
-                } else {
-                    let parent_dir = relative_path.parent().unwrap_or_else(|| Path::new(""));
-
-                    let mut url_path_buf = PathBuf::new();
-                    url_path_buf.push(parent_dir);
-                    url_path_buf.push(file_stem);
-                    url_path_buf.to_string_lossy().into_owned()
-                };
-
-                Ok(Page { content, url_path })
+                Ok(Page {
+                    content,
+                    url_path: if url_path.is_empty() {
+                        "index.html".to_string()
+                    } else {
+                        format!("{url_path}/index.html")
+                    },
+                })
             });
         } else {
             static_asset_tasks.spawn(async move {
@@ -112,8 +130,7 @@ pub async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<Sta
                 let mime_type = mime_guess::from_path(&source_path).first_or_octet_stream();
 
                 Ok(StaticAsset {
-                    source_path,
-                    url_path,
+                    url_path: relative_path.to_string_lossy().to_string(),
                     content,
                     mime_type,
                 })
