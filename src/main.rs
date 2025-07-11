@@ -270,12 +270,29 @@ async fn main() -> anyhow::Result<()> {
             let before_build = Instant::now();
             println!("Building site with configuration: {config:?}");
 
+            // Doing tokio::fs::remove_dir_all on the output_dir causes
+            // some static file servers to freak out.
             if config.output_dir.exists() {
-                tokio::fs::remove_dir_all(&config.output_dir)
-                    .await
-                    .with_context(|| {
-                        format!("Failed to remove output directory: {:?}", config.output_dir)
-                    })?;
+                let mut entries =
+                    tokio::fs::read_dir(&config.output_dir)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to read output directory: {:?}", &config.output_dir)
+                        })?;
+
+                while let Some(entry) = entries.next_entry().await? {
+                    let path = entry.path();
+
+                    if path.is_dir() {
+                        tokio::fs::remove_dir_all(&path)
+                            .await
+                            .with_context(|| format!("Failed to remove directory: {:?}", &path))?;
+                    } else {
+                        tokio::fs::remove_file(&path)
+                            .await
+                            .with_context(|| format!("Failed to remove file: {:?}", &path))?;
+                    }
+                }
             }
 
             let (html_pages, static_assets) = get_all_assets(&config).await?;
