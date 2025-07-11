@@ -52,7 +52,6 @@ header {
 	grid-area: header;
 	display: flex;
 	padding: 0.5rem 3rem;
-	border-bottom: var(--line-thickness) solid var(--border-color);
 	> a {
 		font-size: 1.5rem;
 		font-weight: bold;
@@ -61,6 +60,18 @@ header {
 	}
 	background-color: var(--border-color);
 	margin-bottom: 2rem;
+
+	position: relative;
+	&::after {
+		content: "";
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		height: 1rem;
+		background: linear-gradient(var(--harsh-color), transparent);
+		opacity: 0.3;
+	}
 }
 
 nav {
@@ -90,6 +101,18 @@ footer {
 	font-size: 80%;
 	background-color: var(--border-color);
 	margin-top: 2rem;
+
+	position: relative;
+	&::before {
+		content: "";
+		position: absolute;
+		bottom: 100%;
+		left: 0;
+		right: 0;
+		height: 1rem;
+		background: linear-gradient(to top, var(--harsh-color), transparent);
+		opacity: 0.3;
+	}
 }
 
 a {
