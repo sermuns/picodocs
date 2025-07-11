@@ -1,22 +1,31 @@
 <!doctype html>
-<html lang="sv">
+<html lang="{{config.language}}">
 	<head>
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="icon" href="{{ config.icon_path }}" />
+
+		<link rel="icon" href="{{icon_path}}" />
 		<link rel="stylesheet" href="style.css" />
 
 		<title>{% if title %}{{ title }} - {% endif %}{{ config.title }}</title>
-		<meta name="description" content="{{ config.description}}" />
+		<meta name="description" content="{{config.description}}" />
 		<meta name="generator" content="picodocs" />
 	</head>
 
 	<body>
+
 		<header>
-			<b>{{config.title}}</b>
+			<a href="/"><img src="{{icon_path}}" width="30" />{{config.title}}</a>
 		</header>
 
-		<nav></nav>
+		<nav>
+			<a href="/">start</a>
+			<div>
+				<a href="/">start</a>
+				<a href="/">start</a>
+			</div>
+			<a href="/">start</a>
+		</nav>
 
 		<main>{{ content | safe }}</main>
 
@@ -24,4 +33,6 @@
 			created with <a href="https://github.com/sermuns/picodocs/">picodocs</a>
 		</footer>
 	</body>
+
 </html>
+
