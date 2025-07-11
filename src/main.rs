@@ -74,6 +74,9 @@ struct Conf {
     #[config(default = "/")]
     base_url: String,
 
+    #[config(default = "en")]
+    language: String,
+
     /// Root directory of markdown documentation
     #[config(default = "docs")]
     docs_dir: PathBuf,
