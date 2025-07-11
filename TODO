@@ -1,9 +1,0 @@
-- [ ] internal links, with (configurable) linkchecker
-- [ ] admonitions
-		  - mdbook style or mkdocs?
-- [ ] generate nav
-		  - send url to tera templating
-		  - [ ] directories -> sections
-- [ ] configurable theme
-		  - [ ] set accent color
-		  - [ ] override template
