@@ -32,14 +32,16 @@ body {
 	height: 100vh;
 	display: grid;
 	grid-template-areas:
-		"header header"
-		"nav main"
-		"footer footer";
-	grid-template-columns: 30ch 1fr;
+		"header header header"
+		"nav main _"
+		"footer footer footer";
+	--navbar-width: 15rem;
+	grid-template-columns: var(--navbar-width) 1fr var(--navbar-width);
 	grid-template-rows: auto 1fr auto;
 }
 
-@media (max-width: 60rem) {
+/* max-width = 2 * --navbar-width + --main-width */
+@media (max-width: 90rem) {
 	body {
 		grid-template-areas:
 			"header"
@@ -97,6 +99,7 @@ main {
 	box-sizing: border-box;
 	grid-area: main;
 	width: min(100%, 60rem);
+	justify-self: center;
 	min-width: 0;
 	padding: 1rem;
 }
