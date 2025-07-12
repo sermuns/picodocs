@@ -1,6 +1,6 @@
 # v0.1.0
-- [ ] generate nav
-		- [ ] send url to tera templating
+- [-] generate nav
+		- [x] send url to tera templating
 		- [ ] directories -> sections
 
 # v0.2.0
