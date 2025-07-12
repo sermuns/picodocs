@@ -3,6 +3,8 @@
 <em>An extremely tiny and fast alternative to MkDocs</em>
 </center>
 
+Welcome to picodocs' documentation! picodocs is a static site generator for documentation, designed to be a lightweight and fast alternative to MkDocs. It is written in Rust and aims to provide a simple, efficient way to create documentation sites without the overhead of larger frameworks.
+
 ## Features
 
 - Is installed as a single (tiny) binary. No dependencies!
