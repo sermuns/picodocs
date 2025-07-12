@@ -18,9 +18,13 @@
 		var(--harsh-color) 55%
 	);
 	--line-thickness: round(0.3rem, 1px);
+
+	--main-padding: 2rem;
+
 	color: var(--text-color);
 	background-color: var(--background-color);
-	font-family: "Hank5n Grotesk", sans-serif;
+	font-family: "Hanken Grotesk", sans-serif;
+	line-height: 1.6;
 }
 
 * {
@@ -68,9 +72,12 @@ header {
 
 nav {
 	grid-area: nav;
-	margin-left: 3rem;
-	display: flex;
 	flex-direction: column;
+	padding: var(--main-padding);
+
+	a {
+		display: block;
+	}
 
 	> * {
 		opacity: 0.8;
@@ -90,7 +97,7 @@ main {
 	width: min(100%, 60rem);
 	min-width: 0;
 	justify-self: center;
-	padding: 1rem;
+	padding: var(--main-padding);
 }
 
 footer {
@@ -167,7 +174,6 @@ hr {
 
 	nav {
 		margin: unset;
-		padding: 1rem;
 		gap: 0;
 		flex-direction: column;
 
