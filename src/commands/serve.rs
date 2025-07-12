@@ -2,7 +2,6 @@ use anyhow::Context;
 use axum::{
     Router,
     body::Body,
-    extract::Path,
     http::{Response, StatusCode},
     response::IntoResponse,
     routing::get,
@@ -12,8 +11,8 @@ use notify_debouncer_full::{DebounceEventResult, new_debouncer};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use time::format_description::BorrowedFormatItem;
 use time::macros::format_description;
-use time::{OffsetDateTime, format_description::BorrowedFormatItem};
 use tokio::sync::RwLock;
 use tower_livereload::LiveReloadLayer;
 
@@ -74,12 +73,17 @@ async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Re
 
 pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()> {
     let config = Arc::new(config);
-    let docs_dir = config.docs_dir.clone();
+    let docs_dir = &config.docs_dir;
+
+    let state: AssetMap = Arc::new(RwLock::new(HashMap::new()));
+    rebuild_in_memory_assets(&config, &state).await?;
 
     let livereload_layer = LiveReloadLayer::new();
     let reloader = livereload_layer.reloader();
+    reloader.reload();
 
     use notify::EventKind::{Create, Modify, Remove};
+    use time::OffsetDateTime;
     let mut debouncer = new_debouncer(Duration::from_millis(250), None, {
         move |result: DebounceEventResult| {
             if let Ok(events) = &result {
@@ -87,7 +91,13 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
                     .iter()
                     .any(|e| matches!(e.event.kind, Create(_) | Modify(_) | Remove(_)))
                 {
-                    println!("Event!");
+                    let now = OffsetDateTime::now_local()
+                        .unwrap_or(OffsetDateTime::now_utc())
+                        .time()
+                        .format(SIMPLE_TIME_FORMAT)
+                        .unwrap_or("?".to_string());
+                    println!("[{now}] Detected change in docs directory, rebuilding...");
+                    reloader.reload();
                 }
             }
         }
@@ -95,11 +105,8 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
     .context("Failed to set up file watcher!")?;
 
     debouncer
-        .watch(&docs_dir, RecursiveMode::Recursive)
+        .watch(docs_dir, RecursiveMode::Recursive)
         .with_context(|| format!("Failed to watch docs_dir: {docs_dir:?}"))?;
-
-    let state: AssetMap = Arc::new(RwLock::new(HashMap::new()));
-    rebuild_in_memory_assets(&config, &state).await?;
 
     let app = Router::new()
         .fallback(get(serve_from_memory))
@@ -110,13 +117,13 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
         .await
         .with_context(|| format!("Failed to bind to address: {address}"))?;
 
-    println!("Serving at http://{}", &address);
-    reloader.reload();
     if open {
-        if let Err(e) = open::that(format!("http://{}", &address)) {
-            eprintln!("Failed to open browser: {e}");
-        }
+        open::that(format!("http://{}", &address))
+            .with_context(|| format!("Failed to open browser at http://{}", &address))?;
     }
+
+    println!("Serving at http://{}", &address);
+
     axum::serve(listener, app)
         .await
         .context("Failed to start server")?;

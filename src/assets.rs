@@ -81,10 +81,7 @@ impl SitemapNode {
                     let all_empty = children.iter().all(|p| p.as_os_str().is_empty());
 
                     if all_empty {
-                        let file_name =
-                            full_path.file_name().unwrap().to_string_lossy().to_string();
-
-                        let path = if file_name == "index.md" {
+                        let path = if full_path == Path::new("index.md") {
                             "".to_string()
                         } else {
                             full_path.with_extension("").to_string_lossy().to_string()
