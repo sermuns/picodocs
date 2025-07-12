@@ -1,7 +1,7 @@
 {% macro generate_nav(node) %}
 {% for child in node.children %}
 	{% if child.path %}
-		<a href="{{ child.path }}">{{ child.title }}</a>
+		<a href="/{{ child.path }}">{{ child.title }}</a>
 	{% else %}
 		<b>{{ child.title }}</b>
 	{% endif %}

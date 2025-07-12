@@ -31,17 +31,6 @@ async fn serve_from_memory(
     Path(path): Path<String>,
     assets: axum::extract::Extension<AssetMap>,
 ) -> impl IntoResponse {
-    dbg!(&assets);
-    dbg!(&path);
-
-    // FIXME: this is horrible, i think
-    let path = if path.is_empty() {
-        "index.html".to_string()
-    } else if !path.contains('.') {
-        format!("{path}/index.html")
-    } else {
-        path
-    };
 
     if let Some(asset) = assets.read().await.get(&path) {
         return match asset {

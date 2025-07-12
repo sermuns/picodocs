@@ -69,12 +69,7 @@ impl SitemapNode {
             let mut map: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
 
             for path in paths {
-                if let Some((first, rest)) = path
-                    .iter()
-                    .map(|s| s.to_owned())
-                    .collect::<Vec<_>>()
-                    .split_first()
-                {
+                if let Some((first, rest)) = path.iter().collect::<Vec<_>>().split_first() {
                     let entry = map.entry(first.to_string_lossy().into_owned()).or_default();
                     entry.push(PathBuf::from_iter(rest.iter()));
                 }
@@ -86,23 +81,21 @@ impl SitemapNode {
                     let all_empty = children.iter().all(|p| p.as_os_str().is_empty());
 
                     if all_empty {
-                        let stem = full_path.file_stem().and_then(OsStr::to_str).unwrap_or("");
+                        let file_name =
+                            full_path.file_name().unwrap().to_string_lossy().to_string();
 
-                        let path = if stem == "index" {
-                            Some("".into())
+                        let path = if file_name == "index.md" {
+                            "".to_string()
                         } else {
-                            Some(
-                                full_path
-                                    .to_string_lossy()
-                                    .strip_suffix(".md")
-                                    .unwrap()
-                                    .into(),
-                            )
+                            full_path.with_extension("").to_string_lossy().to_string()
                         };
 
+                        let file_stem =
+                            full_path.file_stem().unwrap().to_string_lossy().to_string();
+
                         SitemapNode {
-                            title: stem.to_string(),
-                            path,
+                            title: file_stem,
+                            path: Some(path),
                             children: Vec::new(),
                         }
                     } else {
@@ -127,6 +120,7 @@ impl SitemapNode {
     }
 }
 
+/// Read all files from `conf.docs_dir`, return generated assets.
 pub async fn get_all_assets(conf: &Conf) -> Result<(Vec<Page>, Vec<StaticAsset>)> {
     // (source, relative) for every regular file under docs_dir
     let files: Vec<(PathBuf, PathBuf)> = WalkDir::new(&conf.docs_dir)
@@ -170,7 +164,7 @@ pub async fn get_all_assets(conf: &Conf) -> Result<(Vec<Page>, Vec<StaticAsset>)
             let current_path = if rel == PathBuf::from("index.md") {
                 String::new()
             } else {
-                rel.file_stem().unwrap().to_string_lossy().into_owned()
+                rel.with_extension("").to_string_lossy().to_string()
             };
 
             let mut ctx = tera::Context::new();
@@ -185,11 +179,7 @@ pub async fn get_all_assets(conf: &Conf) -> Result<(Vec<Page>, Vec<StaticAsset>)
 
             Ok(Page {
                 content: rendered,
-                url_path: if current_path.is_empty() {
-                    "index.html".into()
-                } else {
-                    format!("{current_path}/index.html")
-                },
+                url_path: current_path,
             })
         })
     });

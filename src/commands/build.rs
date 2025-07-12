@@ -22,7 +22,8 @@ pub async fn run(config: Conf) -> anyhow::Result<()> {
     let (html_pages, static_assets) = assets::get_all_assets(&config).await?;
 
     for page in html_pages {
-        let output_path = config.output_dir.join(&page.url_path);
+        let output_path = config.output_dir.join(&page.url_path).join("index.html");
+
         if let Some(parent) = output_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
