@@ -30,3 +30,5 @@ pub struct Conf {
     #[config(default = false)]
     pub follow_links: bool,
 }
+
+pub type PartialConf = <Conf as Config>::Partial;
