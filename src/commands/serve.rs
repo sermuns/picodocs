@@ -18,7 +18,7 @@ use tokio::sync::RwLock;
 use tower_livereload::LiveReloadLayer;
 
 use crate::{
-    assets::{InMemoryAsset, get_all_assets},
+    assets::{Asset, InMemoryAsset, get_all_assets},
     config::Conf,
 };
 
@@ -31,7 +31,6 @@ async fn serve_from_memory(
     Path(path): Path<String>,
     assets: axum::extract::Extension<AssetMap>,
 ) -> impl IntoResponse {
-
     if let Some(asset) = assets.read().await.get(&path) {
         return match asset {
             InMemoryAsset::Page(p) => Response::builder()
@@ -57,19 +56,20 @@ async fn serve_from_memory(
 }
 
 async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Result<()> {
-    let (html_pages, static_assets) = get_all_assets(config).await?;
+    let assets = get_all_assets(config).await?;
 
-    let map: HashMap<_, _> = html_pages
+    let updated_asset_map = assets
         .into_iter()
-        .map(|page| (page.url_path.clone(), InMemoryAsset::Page(page)))
-        .chain(
-            static_assets
-                .into_iter()
-                .map(|asset| (asset.url_path.clone(), InMemoryAsset::Static(asset))),
-        )
-        .collect();
+        .map(|asset| match asset {
+            Asset::Page(page) => (page.url_path.clone(), InMemoryAsset::Page(page)),
+            Asset::Static(static_asset) => (
+                static_asset.url_path.clone(),
+                InMemoryAsset::Static(static_asset),
+            ),
+        })
+        .collect::<HashMap<_, _>>();
 
-    *store.write().await = map;
+    *store.write().await = updated_asset_map;
     Ok(())
 }
 

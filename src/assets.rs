@@ -51,7 +51,7 @@ impl fmt::Debug for StaticAsset {
 }
 
 use anyhow::Result;
-use futures::future::try_join_all;
+use futures::future::join_all;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::{ffi::OsStr, sync::Arc};
@@ -120,8 +120,13 @@ impl SitemapNode {
     }
 }
 
+pub enum Asset {
+    Page(Page),
+    Static(StaticAsset),
+}
+
 /// Read all files from `conf.docs_dir`, return generated assets.
-pub async fn get_all_assets(conf: &Conf) -> Result<(Vec<Page>, Vec<StaticAsset>)> {
+pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
     // (source, relative) for every regular file under docs_dir
     let files: Vec<(PathBuf, PathBuf)> = WalkDir::new(&conf.docs_dir)
         .follow_links(conf.follow_links)
@@ -144,13 +149,14 @@ pub async fn get_all_assets(conf: &Conf) -> Result<(Vec<Page>, Vec<StaticAsset>)
         })
         .collect::<Result<Vec<_>>>()?;
 
+    let markdown_extension = OsStr::new("md");
     let (pages, assets): (Vec<_>, Vec<_>) = files
         .into_iter()
-        .partition(|(src, _)| src.extension() == Some(OsStr::new("md")));
+        .partition(|(src, _)| src.extension() == Some(markdown_extension));
 
     let sitemap = Arc::new(SitemapNode::new(&pages));
 
-    let render_pages = pages.into_iter().map(|(src, rel)| {
+    let page_render_tasks = pages.into_iter().map(|(src, rel)| {
         let conf = conf.clone();
         let sitemap = Arc::clone(&sitemap);
         tokio::spawn(async move {
@@ -161,7 +167,7 @@ pub async fn get_all_assets(conf: &Conf) -> Result<(Vec<Page>, Vec<StaticAsset>)
             let mut html = String::new();
             html::push_html(&mut html, MarkdownParser::new(&md));
 
-            let current_path = if rel == PathBuf::from("index.md") {
+            let current_path = if *rel == PathBuf::from("index.md") {
                 String::new()
             } else {
                 rel.with_extension("").to_string_lossy().to_string()
@@ -184,29 +190,33 @@ pub async fn get_all_assets(conf: &Conf) -> Result<(Vec<Page>, Vec<StaticAsset>)
         })
     });
 
-    let render_assets = assets.into_iter().map(|(src, rel)| {
+    let asset_render_tasks = assets.into_iter().map(|(src, rel)| {
         tokio::spawn(async move {
-            let bytes = tokio::fs::read(&src)
-                .await
-                .with_context(|| format!("Read static file {src:?}"))?;
-
             Ok(StaticAsset {
+                content: tokio::fs::read(&src)
+                    .await
+                    .with_context(|| format!("Read static file {src:?}"))?,
                 url_path: rel.to_string_lossy().into_owned(),
-                content: bytes,
                 mime_type: mime_guess::from_path(&src).first_or_octet_stream(),
             })
         })
     });
 
-    let pages: Vec<Page> = try_join_all(render_pages)
-        .await?
+    let page_assets = join_all(page_render_tasks)
+        .await
         .into_iter()
-        .collect::<Result<_>>()?;
-
-    let assets: Vec<StaticAsset> = try_join_all(render_assets)
-        .await?
+        .map(|res| res.map_err(|e| anyhow::anyhow!(e)).and_then(|r| r))
+        .collect::<Result<Vec<_>>>()?
         .into_iter()
-        .collect::<Result<_>>()?;
+        .map(Asset::Page);
 
-    Ok((pages, assets))
+    let static_assets = join_all(asset_render_tasks)
+        .await
+        .into_iter()
+        .map(|res| res.map_err(|e| anyhow::anyhow!(e)).and_then(|r| r))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .map(Asset::Static);
+
+    Ok(page_assets.chain(static_assets).collect())
 }
