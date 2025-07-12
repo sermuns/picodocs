@@ -1,10 +1,10 @@
 use anyhow::Context;
 use once_cell::sync::Lazy;
 use pulldown_cmark::{Parser as MarkdownParser, html};
+use serde::Serialize;
 use std::fmt;
 use std::path::PathBuf;
 use tera::Tera;
-use tokio::{task::JoinSet, try_join};
 use walkdir::WalkDir;
 
 use crate::config::Conf;
@@ -50,110 +50,173 @@ impl fmt::Debug for StaticAsset {
     }
 }
 
-pub async fn get_all_assets(config: &Conf) -> anyhow::Result<(Vec<Page>, Vec<StaticAsset>)> {
-    let config_arc = std::sync::Arc::new(config.clone());
-    let mut html_page_tasks = JoinSet::new();
-    let mut static_asset_tasks = JoinSet::new();
+use anyhow::Result;
+use futures::future::try_join_all;
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::{ffi::OsStr, sync::Arc};
 
-    for entry in WalkDir::new(&config.docs_dir).follow_links(config.follow_links) {
-        let source_path = entry
-            .with_context(|| {
-                format!(
-                    "Error walking docs directory entry in {:?}",
-                    config.docs_dir
-                )
-            })?
-            .into_path();
+#[derive(Debug, Serialize)]
+pub struct SitemapNode {
+    pub title: String,
+    pub path: Option<String>,
+    pub children: Vec<SitemapNode>,
+}
 
-        if !source_path.is_file() {
-            continue;
+impl SitemapNode {
+    pub fn new(pages: &[(PathBuf, PathBuf)]) -> Self {
+        fn build(base: &Path, paths: &[PathBuf]) -> Vec<SitemapNode> {
+            let mut map: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+
+            for path in paths {
+                if let Some((first, rest)) = path
+                    .iter()
+                    .map(|s| s.to_owned())
+                    .collect::<Vec<_>>()
+                    .split_first()
+                {
+                    let entry = map.entry(first.to_string_lossy().into_owned()).or_default();
+                    entry.push(PathBuf::from_iter(rest.iter()));
+                }
+            }
+
+            map.into_iter()
+                .map(|(segment, children)| {
+                    let full_path = base.join(&segment);
+                    let all_empty = children.iter().all(|p| p.as_os_str().is_empty());
+
+                    if all_empty {
+                        let stem = full_path.file_stem().and_then(OsStr::to_str).unwrap_or("");
+
+                        let path = if stem == "index" {
+                            Some("".into())
+                        } else {
+                            Some(
+                                full_path
+                                    .to_string_lossy()
+                                    .strip_suffix(".md")
+                                    .unwrap()
+                                    .into(),
+                            )
+                        };
+
+                        SitemapNode {
+                            title: stem.to_string(),
+                            path,
+                            children: Vec::new(),
+                        }
+                    } else {
+                        SitemapNode {
+                            title: segment,
+                            path: None,
+                            children: build(&full_path, &children),
+                        }
+                    }
+                })
+                .collect()
         }
 
-        let config_for_task = std::sync::Arc::clone(&config_arc);
-
-        let relative_path = source_path
-            .strip_prefix(&config.docs_dir)
-            .with_context(|| {
-                format!(
-                    "Failed to strip prefix from path {:?} with docs_dir {:?}",
-                    source_path, config.docs_dir
-                )
-            })?
-            .to_owned();
-
-        if source_path.extension() == Some(std::ffi::OsStr::new("md")) {
-            html_page_tasks.spawn(async move {
-                let markdown_content = tokio::fs::read_to_string(&source_path)
-                    .await
-                    .with_context(|| format!("Failed to read markdown file: {source_path:?}"))?;
-
-                let mut rendered_content = String::new();
-                html::push_html(
-                    &mut rendered_content,
-                    MarkdownParser::new(&markdown_content),
-                );
-
-                let url_path = if relative_path == PathBuf::from("index.md") {
-                    "".to_string()
-                } else {
-                    relative_path
-                        .file_stem()
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string()
-                };
-
-                let mut context = tera::Context::new();
-                context.insert("config", &*config_for_task);
-                context.insert("current_path", &url_path);
-                context.insert("content", &rendered_content);
-
-                let content = TERA.render("base.html", &context).with_context(|| {
-                    format!("Failed to render Tera template for file: {source_path:?}")
-                })?;
-
-                Ok(Page {
-                    content,
-                    url_path: if url_path.is_empty() {
-                        "index.html".to_string()
-                    } else {
-                        format!("{url_path}/index.html")
-                    },
-                })
-            });
-        } else {
-            static_asset_tasks.spawn(async move {
-                let content = tokio::fs::read(&source_path)
-                    .await
-                    .with_context(|| format!("Failed to read static file: {source_path:?}"))?;
-
-                let mime_type = mime_guess::from_path(&source_path).first_or_octet_stream();
-
-                Ok(StaticAsset {
-                    url_path: relative_path.to_string_lossy().to_string(),
-                    content,
-                    mime_type,
-                })
-            });
+        SitemapNode {
+            title: "".to_string(),
+            path: None,
+            children: build(
+                Path::new(""),
+                &pages.iter().map(|(_, p)| p.clone()).collect::<Vec<_>>(),
+            ),
         }
     }
+}
 
-    Ok(try_join!(
-        async {
-            html_page_tasks
-                .join_all()
+pub async fn get_all_assets(conf: &Conf) -> Result<(Vec<Page>, Vec<StaticAsset>)> {
+    // (source, relative) for every regular file under docs_dir
+    let files: Vec<(PathBuf, PathBuf)> = WalkDir::new(&conf.docs_dir)
+        .follow_links(conf.follow_links)
+        .into_iter()
+        .filter_map(|e| {
+            let entry = e.expect("WalkDir error encountered");
+            if entry.file_type().is_file() {
+                Some(entry)
+            } else {
+                None
+            }
+        })
+        .map(|e| {
+            let source_path = e.into_path();
+            let relative_path = source_path
+                .strip_prefix(&conf.docs_dir)
+                .with_context(|| format!("Strip prefix failed for {source_path:?}"))?
+                .to_owned();
+            Ok((source_path, relative_path))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let (pages, assets): (Vec<_>, Vec<_>) = files
+        .into_iter()
+        .partition(|(src, _)| src.extension() == Some(OsStr::new("md")));
+
+    let sitemap = Arc::new(SitemapNode::new(&pages));
+
+    let render_pages = pages.into_iter().map(|(src, rel)| {
+        let conf = conf.clone();
+        let sitemap = Arc::clone(&sitemap);
+        tokio::spawn(async move {
+            let md = tokio::fs::read_to_string(&src)
                 .await
-                .into_iter()
-                .collect::<Result<_, anyhow::Error>>()
-                .context("Failed to process one or more HTML pages")
-        },
-        async {
-            static_asset_tasks
-                .join_all()
+                .with_context(|| format!("Read markdown {src:?}"))?;
+
+            let mut html = String::new();
+            html::push_html(&mut html, MarkdownParser::new(&md));
+
+            let current_path = if rel == PathBuf::from("index.md") {
+                String::new()
+            } else {
+                rel.file_stem().unwrap().to_string_lossy().into_owned()
+            };
+
+            let mut ctx = tera::Context::new();
+            ctx.insert("config", &conf);
+            ctx.insert("sitemap", &*sitemap);
+            ctx.insert("current_path", &current_path);
+            ctx.insert("content", &html);
+
+            let rendered = TERA
+                .render("base.html", &ctx)
+                .with_context(|| format!("Render template for {src:?}"))?;
+
+            Ok(Page {
+                content: rendered,
+                url_path: if current_path.is_empty() {
+                    "index.html".into()
+                } else {
+                    format!("{current_path}/index.html")
+                },
+            })
+        })
+    });
+
+    let render_assets = assets.into_iter().map(|(src, rel)| {
+        tokio::spawn(async move {
+            let bytes = tokio::fs::read(&src)
                 .await
-                .into_iter()
-                .collect::<Result<_, anyhow::Error>>()
-                .context("Failed to process one or more static assets")
-        },
-    )?)
+                .with_context(|| format!("Read static file {src:?}"))?;
+
+            Ok(StaticAsset {
+                url_path: rel.to_string_lossy().into_owned(),
+                content: bytes,
+                mime_type: mime_guess::from_path(&src).first_or_octet_stream(),
+            })
+        })
+    });
+
+    let pages: Vec<Page> = try_join_all(render_pages)
+        .await?
+        .into_iter()
+        .collect::<Result<_>>()?;
+
+    let assets: Vec<StaticAsset> = try_join_all(render_assets)
+        .await?
+        .into_iter()
+        .collect::<Result<_>>()?;
+
+    Ok((pages, assets))
 }

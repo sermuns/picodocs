@@ -1,3 +1,17 @@
+{% macro generate_nav(node) %}
+{% for child in node.children %}
+	{% if child.path %}
+		<a href="{{ child.path }}">{{ child.title }}</a>
+	{% else %}
+		<b>{{ child.title }}</b>
+	{% endif %}
+
+	{% if child.children %}
+		<div>{{ self::generate_nav(node=child) }}</div>
+	{% endif %}
+{% endfor %}
+{% endmacro %}
+
 <!doctype html>
 <html lang="{{config.language}}">
 	<head>
@@ -20,12 +34,7 @@
 		</header>
 
 		<nav>
-			<a href="/">start</a>
-			<div>
-				<a href="/">start</a>
-				<a href="/">start</a>
-			</div>
-			<a href="/">start</a>
+			{{ self::generate_nav(node=sitemap) }}
 		</nav>
 
 		<main>
