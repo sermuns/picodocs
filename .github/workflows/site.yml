@@ -1,10 +1,11 @@
-name: Publish README on GitHub pages
+name: Publish picodocs docs
+
 on:
   push:
     branches:
       - main
     paths:
-      - README.md
+      - docs/**
       - .github/workflows/site.yml
   workflow_dispatch:
 
@@ -17,17 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: jdx/mise-action@v2
-        with:
-          mise_toml: |
-            [tools]
-            "ubi:sermuns/meread" = "latest"
+      - run: rustup toolchain install stable --profile minimal
 
-      - run: |
-          meread README.md -e public
-          install -D docs/banner.png public/docs/banner.png
+      - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/configure-pages@v4
+      - run: cargo run -- build
 
       - uses: actions/upload-pages-artifact@v3
         with:
