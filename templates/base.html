@@ -1,10 +1,7 @@
 {% macro generate_nav(node) %}
 {% for child in node.children %}
-	{% if child.path %}
-		<a href="/{{ child.path }}">{{ child.title }}</a>
-	{% else %}
-		<b>{{ child.title }}</b>
-	{% endif %}
+	<a
+		href="/{{ child.path }}" {% if child.path == current_path %}style="font-weight: bold;"{% endif %}>{{ child.title }}</a>
 
 	{% if child.children %}
 		<div>{{ self::generate_nav(node=child) }}</div>
@@ -33,7 +30,13 @@
 			<a href="/">{%if config.icon_path%}<img src="/{{config.icon_path}}" width="30" />{%endif%}{{config.title}}</a>
 		</header>
 
-		<nav>
+		<nav role="navigation">
+			<input type="checkbox" id="nav-toggle" style="display:none;" />
+			<label for="nav-toggle">
+				<hr>
+				<hr>
+				<hr>
+			</label>
 			{{ self::generate_nav(node=sitemap) }}
 		</nav>
 

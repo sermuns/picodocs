@@ -9,8 +9,8 @@
 	);
 	--link-color: color-mix(
 		in hsl,
-		var(--text-color) 40%,
-		var(--accent-color) 60%
+		var(--text-color) 60%,
+		var(--accent-color) 40%
 	);
 	--background-color: color-mix(
 		in hsl,
@@ -20,7 +20,7 @@
 	--line-thickness: round(0.3rem, 1px);
 	color: var(--text-color);
 	background-color: var(--background-color);
-	font-family: "Hanken Grotesk", sans-serif;
+	font-family: "Hank5n Grotesk", sans-serif;
 }
 
 * {
@@ -35,22 +35,9 @@ body {
 		"header header header"
 		"nav main _"
 		"footer footer footer";
-	--navbar-width: 15rem;
-	grid-template-columns: var(--navbar-width) 1fr var(--navbar-width);
+	--left-sidebar-width: 12rem;
+	grid-template-columns: var(--left-sidebar-width) 1fr var(--left-sidebar-width);
 	grid-template-rows: auto 1fr auto;
-}
-
-/* max-width = 2 * --navbar-width + --main-width */
-@media (max-width: 90rem) {
-	body {
-		grid-template-areas:
-			"header"
-			"nav"
-			"main"
-			"footer";
-		grid-template-columns: 1fr;
-		grid-template-rows: auto auto 1fr auto;
-	}
 }
 
 header {
@@ -58,7 +45,7 @@ header {
 	display: flex;
 	padding: 0.5rem 3rem;
 	> a {
-		font-size: 1.5rem;
+		font-size: 150%;
 		font-weight: bold;
 		display: flex;
 		gap: 1rem;
@@ -84,14 +71,16 @@ nav {
 	margin-left: 3rem;
 	display: flex;
 	flex-direction: column;
-	div {
-		margin: 1rem 0;
-	}
-	a {
-		display: block;
-		&:first-child {
-			font-size: 150%;
+
+	> * {
+		opacity: 0.8;
+		&:hover {
+			opacity: 1;
 		}
+	}
+
+	label {
+		display: none;
 	}
 }
 
@@ -99,8 +88,8 @@ main {
 	box-sizing: border-box;
 	grid-area: main;
 	width: min(100%, 60rem);
-	justify-self: center;
 	min-width: 0;
+	justify-self: center;
 	padding: 1rem;
 }
 
@@ -158,11 +147,58 @@ pre {
 	max-width: 100%;
 }
 
-/* * + h1, */
-/* * + h2, */
-/* * + h3, */
-/* * + h4, */
-/* * + h5, */
-/* * + h6 { */
-/* 	margin-top: 1rem; */
-/* } */
+hr {
+	width: 100%;
+	background-color: var(--text-color);
+}
+
+/* MOBILE STYLES */
+/* max-width = 2 * --navbar-width + --main-width */
+@media (max-width: 80rem) {
+	body {
+		grid-template-areas:
+			"header"
+			"nav"
+			"main"
+			"footer";
+		grid-template-columns: 1fr;
+		grid-template-rows: auto auto 1fr auto;
+	}
+
+	nav {
+		margin: unset;
+		padding: 1rem;
+		gap: 0;
+		flex-direction: column;
+
+		> a {
+			font-size: 150%;
+			* + & {
+				margin-top: 1rem;
+			}
+		}
+
+		input:checked ~ label {
+			gap: 0.7rem;
+		}
+
+		input:not(:checked) ~ :not(label) {
+			display: none;
+		}
+
+		label {
+			display: flex;
+			flex-direction: column;
+			cursor: pointer;
+			align-items: flex-start;
+			gap: round(0.5rem, 1px);
+			hr {
+				display: block;
+				width: 3rem;
+				height: var(--line-thickness);
+				margin: 0;
+				border: none;
+			}
+		}
+	}
+}
