@@ -8,15 +8,19 @@ pub async fn run(config: Conf) -> anyhow::Result<()> {
     let before_build = Instant::now();
     println!("Building site with configuration: {config:?}");
 
-    if config.output_dir.exists() {
-        tokio::fs::remove_dir_all(&config.output_dir)
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to remove output directory: {:?}",
-                    &config.output_dir
-                )
-            })?;
+    match tokio::fs::remove_dir_all(&config.output_dir).await {
+        Ok(_) => {}
+        Err(e) => match e.kind() {
+            std::io::ErrorKind::NotFound => {}
+            _ => {
+                Err(e).with_context(|| {
+                    format!(
+                        "Failed to remove output directory: {:?}",
+                        &config.output_dir
+                    )
+                })?;
+            }
+        },
     }
 
     let (html_pages, static_assets) = assets::get_all_assets(&config).await?;
