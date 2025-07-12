@@ -27,11 +27,10 @@ type AssetMap = Arc<RwLock<HashMap<String, InMemoryAsset>>>;
 const SIMPLE_TIME_FORMAT: &[BorrowedFormatItem<'_>] =
     format_description!("[hour]:[minute]:[second]");
 
-async fn serve_from_memory(
-    Path(path): Path<String>,
-    assets: axum::extract::Extension<AssetMap>,
-) -> impl IntoResponse {
-    if let Some(asset) = assets.read().await.get(&path) {
+use axum::extract::{Request, State};
+async fn serve_from_memory(State(assets): State<AssetMap>, req: Request) -> impl IntoResponse {
+    let path = req.uri().path().trim_start_matches('/');
+    if let Some(asset) = assets.read().await.get(path) {
         return match asset {
             InMemoryAsset::Page(p) => Response::builder()
                 .status(StatusCode::OK)
@@ -77,76 +76,34 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
     let config = Arc::new(config);
     let docs_dir = config.docs_dir.clone();
 
-    let store: AssetMap = Arc::new(RwLock::new(HashMap::new()));
-    rebuild_in_memory_assets(&config, &store).await?;
-
-    let store_clone = Arc::clone(&store);
-    let config_clone = Arc::clone(&config);
-
     let livereload_layer = LiveReloadLayer::new();
     let reloader = livereload_layer.reloader();
-    reloader.reload();
 
-    tokio::spawn(async move {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let rt = tokio::runtime::Handle::current();
-
-        let mut debouncer = new_debouncer(
-            Duration::from_millis(250),
-            None,
-            move |result: DebounceEventResult| {
-                let tx = tx.clone();
-                rt.spawn(async move {
-                    if match &result {
-                        Ok(events) => events.iter().any(|debounced_event| {
-                            matches!(
-                                debounced_event.event.kind,
-                                notify::EventKind::Create(_)
-                                    | notify::EventKind::Modify(_)
-                                    | notify::EventKind::Remove(_)
-                            )
-                        }),
-                        _ => false,
-                    } {
-                        if let Err(e) = tx.send(result).await {
-                            eprintln!("Error sending event result: {e:?}");
-                        }
-                    }
-                });
-            },
-        )
-        .context("Failed to create file watcher")?;
-
-        debouncer
-            .watch(&docs_dir, RecursiveMode::Recursive)
-            .with_context(|| format!("Failed to watch docs_dir: {docs_dir:?}"))?;
-
-        while rx.recv().await.is_some() {
-            let now = OffsetDateTime::now_local()
-                .unwrap_or(OffsetDateTime::now_utc())
-                .time()
-                .format(SIMPLE_TIME_FORMAT)
-                .context("Failed to format time for log output")?;
-            println!("[{now}] Detected change in docs directory, rebuilding...");
-            if let Err(e) = rebuild_in_memory_assets(&config_clone, &store_clone).await {
-                eprintln!("Failed to rebuild in-memory assets: {e:?}");
-                continue;
+    use notify::EventKind::{Create, Modify, Remove};
+    let mut debouncer = new_debouncer(Duration::from_millis(250), None, {
+        move |result: DebounceEventResult| {
+            if let Ok(events) = &result {
+                if events
+                    .iter()
+                    .any(|e| matches!(e.event.kind, Create(_) | Modify(_) | Remove(_)))
+                {
+                    println!("Event!");
+                }
             }
-            reloader.reload();
         }
-        Ok::<(), anyhow::Error>(())
-    });
+    })
+    .context("Failed to set up file watcher!")?;
+
+    debouncer
+        .watch(&docs_dir, RecursiveMode::Recursive)
+        .with_context(|| format!("Failed to watch docs_dir: {docs_dir:?}"))?;
+
+    let state: AssetMap = Arc::new(RwLock::new(HashMap::new()));
+    rebuild_in_memory_assets(&config, &state).await?;
 
     let app = Router::new()
-        .route(
-            "/",
-            get({
-                let assets = axum::extract::Extension(store.clone());
-                || serve_from_memory(Path("".to_string()), assets)
-            }),
-        )
-        .route("/{*path}", get(serve_from_memory))
-        .layer(axum::extract::Extension(store))
+        .fallback(get(serve_from_memory))
+        .with_state(state)
         .layer(livereload_layer);
 
     let listener = tokio::net::TcpListener::bind(&address)
@@ -154,6 +111,7 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
         .with_context(|| format!("Failed to bind to address: {address}"))?;
 
     println!("Serving at http://{}", &address);
+    reloader.reload();
     if open {
         if let Err(e) = open::that(format!("http://{}", &address)) {
             eprintln!("Failed to open browser: {e}");
