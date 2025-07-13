@@ -144,6 +144,11 @@ img {
 	display: block;
 	margin: 0 auto;
 }
+img + em {
+	display: block;
+	text-align: center;
+	font-style: italic;
+}
 
 code {
 	font-family: "JetBrains Mono";
