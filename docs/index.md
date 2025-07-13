@@ -13,6 +13,5 @@ picodocs is a static site generator for documentation. It is meant to be a **lig
 
 ## Performance
 
-picodocs is blazingly fast. 
-
-![Plot of benchmark comparison](benchmark_plot.svg)
+picodocs is blazingly fast. Here is a benchmark comparing picodocs some of its alternatives:
+<img alt="Plot of benchmark comparison" src="benchmark_plot.svg" width="100%">

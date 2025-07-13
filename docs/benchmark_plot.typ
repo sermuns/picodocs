@@ -1,12 +1,12 @@
 #import "@preview/cetz:0.4.0": canvas, draw
 #import "@preview/cetz-plot:0.1.2": chart
 
-#let background = rgb("#4F5D2F")
+#let background = rgb("#4F5D2F").darken(40%)
 #let foreground = rgb("#f3e5c2")
 #let accent = rgb("#9aaa65")
 
-#set text(font: "JetBrains Mono", weight: 500)
-#set page(width: auto, height: auto, margin: .5cm, fill: foreground)
+#set text(font: "JetBrains Mono", fill: white)
+#set page(width: auto, height: auto, margin: .3cm, fill: none)
 
 #let benchmark = (
   csv("benchmark.csv")
@@ -21,17 +21,13 @@
     })
 )
 
-#align(center)[Milliseconds to build _this_ site]
-
-#v(1em)
-
 #canvas({
   draw.set-style(barchart: (bar-width: .5))
   chart.barchart(
-    size: (7, auto),
-    bar-style: i => {
-      (fill: accent.darken(i * 30%))
-    },
+    size: (13, auto),
+    bar-style: i => (
+      fill: gradient.linear(accent, red).sample(i * 40%),
+    ),
     x-tick-step: 50,
     x-format: it => [#it],
     x-grid: false,
