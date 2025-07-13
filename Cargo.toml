@@ -10,10 +10,11 @@ include = ["src/**/*", "assets/**/*", "LICENSE", "README.md"]
 
 [dependencies]
 anyhow = "1"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 clap = { version = "4.5.40", features = ["derive"] }
 confique = { version = "0.3.0", features = ["toml"] }
 futures = "0.3.31"
+hyper = "1.6.0"
 mime_guess = "2.0.5"
 notify = "8.1.0"
 notify-debouncer-full = "0.5.0"
@@ -24,7 +25,6 @@ serde = "1.0.219"
 tera = "1"
 time = { version = "0.3.41", features = ["formatting", "local-offset", "macros"] }
 tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1.17", features = ["sync"] }
 toml = "0.9.0"
-tower-http = { version = "0.6.6", features = ["fs"] }
-tower-livereload = "0.9.6"
 walkdir = "2.5.0"
