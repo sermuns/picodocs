@@ -1,10 +1,10 @@
-{% macro generate_nav(node) %}
-{% for child in node.children %}
+{% macro generate_nav(root) %}
+{% for child in root.children %}
 	<a
 		href="/{{ child.path }}" {% if child.path == current_path %}style="text-decoration:underline;"{% endif %}>{{ child.title }}</a>
 
 	{% if child.children %}
-		<div>{{ self::generate_nav(node=child) }}</div>
+		<div>{{ self::generate_nav(root=child) }}</div>
 	{% endif %}
 {% endfor %}
 {% endmacro %}
@@ -38,7 +38,7 @@
 				<hr>
 			</label>
 
-			{{ self::generate_nav(node=sitemap) }}
+			{{ self::generate_nav(root=sitemap) }}
 		</nav>
 
 		<main>
