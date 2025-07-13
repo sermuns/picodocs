@@ -1,10 +1,23 @@
 use anyhow::Context;
+use confique::{Config, Partial};
+use std::path::PathBuf;
 use std::time::Instant;
 
-use crate::{assets, config::Conf};
+use crate::{
+    assets,
+    config::{Conf, PartialConf},
+};
 
 /// Build and write site to output directory.
-pub async fn run(config: Conf) -> anyhow::Result<()> {
+pub async fn run(partial_config: PartialConf, output_dir: PathBuf) -> anyhow::Result<()> {
+    let config = Conf::from_partial(
+        PartialConf {
+            output_dir: Some(output_dir),
+            ..PartialConf::default_values()
+        }
+        .with_fallback(partial_config),
+    )?;
+
     let before_build = Instant::now();
     println!("Building site with configuration: {config:?}");
 

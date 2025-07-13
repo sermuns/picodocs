@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[clap(version, author, about)]
 pub struct Args {
     /// Config file
-    #[arg(short, long = "config", default_value = "picodocs.toml")]
+    #[arg(short, long = "config", default_value = "picodocs.yml")]
     pub config_path: PathBuf,
 
     #[command(subcommand)]
@@ -15,10 +15,15 @@ pub struct Args {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Builds the site
-    Build {},
+    Build {
+        /// Where to place rendered site files
+        #[arg(short, long)]
+        output_dir: PathBuf,
+    },
 
     /// Preview the site with a live-reloading server
     Serve {
+        /// For example 0.0.0.0:1809 will bind to all interfaces
         #[arg(short, long, default_value = "localhost:1809")]
         address: String,
 
@@ -29,10 +34,11 @@ pub enum Command {
 
     /// Dump the default configuration to a file
     Defaults {
-        #[arg(short, long, default_value = "picodocs.toml")]
+        /// Where to write default configuration
+        #[arg(short, long, default_value = "picodocs.yml")]
         output_path: PathBuf,
 
-        /// Overwrite the output file if it already exists
+        /// Overwrite configuration if already existing
         #[arg(short, long)]
         force: bool,
     },

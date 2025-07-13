@@ -76,11 +76,16 @@ impl SitemapNode {
             }
 
             map.into_iter()
-                .map(|(segment, children)| {
+                .filter_map(|(segment, children)| {
                     let full_path = base.join(&segment);
                     let all_empty = children.iter().all(|p| p.as_os_str().is_empty());
 
                     if all_empty {
+                        if full_path.file_name() == Some(OsStr::new("index.md"))
+                            && full_path.parent().is_some()
+                        {
+                            return None;
+                        }
                         let path = if full_path == Path::new("index.md") {
                             "".to_string()
                         } else {
@@ -90,17 +95,22 @@ impl SitemapNode {
                         let file_stem =
                             full_path.file_stem().unwrap().to_string_lossy().to_string();
 
-                        SitemapNode {
+                        Some(SitemapNode {
                             title: file_stem,
                             path: Some(path),
                             children: Vec::new(),
-                        }
+                        })
                     } else {
-                        SitemapNode {
+                        let path = if full_path == Path::new("index.md") {
+                            "".to_string()
+                        } else {
+                            full_path.with_extension("").to_string_lossy().to_string()
+                        };
+                        Some(SitemapNode {
                             title: segment,
-                            path: None,
+                            path: Some(path),
                             children: build(&full_path, &children),
-                        }
+                        })
                     }
                 })
                 .collect()
@@ -164,10 +174,14 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
             let mut html = String::new();
             html::push_html(&mut html, MarkdownParser::new(&md));
 
-            let current_path = if *rel == PathBuf::from("index.md") {
-                String::new()
-            } else {
-                rel.with_extension("").to_string_lossy().to_string()
+            let current_path = {
+                let mut current_path = rel.clone();
+                if rel.file_name() == Some(OsStr::new("index.md")) {
+                    current_path.pop();
+                } else {
+                    current_path.set_extension(""); // Remove the extension
+                }
+                current_path.to_str().unwrap().to_string()
             };
 
             let mut ctx = tera::Context::new();

@@ -5,26 +5,38 @@ mod config;
 
 use clap::Parser;
 use confique::Partial;
-use confique::{Config, File, FileFormat};
+use confique::{File, FileFormat};
 
 use crate::{
     args::{Args, Command},
-    config::{Conf, PartialConf},
+    config::PartialConf,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let config = Conf::from_partial(
-        File::with_format(&args.config_path, FileFormat::Toml)
-            .load::<PartialConf>()?
-            .with_fallback(PartialConf::default_values()),
-    )?;
+    let partial_conf = File::with_format(
+        &args.config_path,
+        match args.config_path.extension().unwrap().to_str().unwrap() {
+            "yml" | "yaml" => FileFormat::Yaml,
+            "toml" => FileFormat::Toml,
+            _ => {
+                anyhow::bail!(
+                    "Unsupported file extension : {:?}. Supported extensions are .yml, .yaml, and .toml.",
+                    &args.config_path
+                );
+            }
+        },
+    )
+    .load::<PartialConf>()?
+    .with_fallback(PartialConf::default_values());
 
     match args.command {
-        Command::Build {} => commands::build::run(config).await?,
-        Command::Serve { address, open } => commands::serve::run(config, address, open).await?,
+        Command::Build { output_dir } => commands::build::run(partial_conf, output_dir).await?,
+        Command::Serve { address, open } => {
+            commands::serve::run(partial_conf, address, open).await?
+        }
         Command::Defaults { output_path, force } => {
             commands::defaults::run(output_path, force).await?
         }

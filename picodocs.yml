@@ -1,0 +1,8 @@
+title: picodocs
+icon_path: ant.svg
+description: picodocs is a static site generator for documentation.
+base_url: /
+language: en
+docs_dir: docs
+output_dir: public
+follow_links: false

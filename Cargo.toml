@@ -12,7 +12,7 @@ include = ["src/**/*", "assets/**/*", "LICENSE", "README.md"]
 anyhow = "1"
 axum = { version = "0.8", features = ["ws"] }
 clap = { version = "4.5.40", features = ["derive"] }
-confique = { version = "0.3.0", features = ["toml"] }
+confique = { version = "0.3.0", features = ["toml", "yaml"] }
 futures = "0.3.31"
 hyper = "1.6.0"
 mime_guess = "2.0.5"
@@ -22,6 +22,7 @@ once_cell = "1.21.3"
 open = "5.3.2"
 pulldown-cmark = "0.13.0"
 serde = "1.0.219"
+serde_yaml = "0.9.34"
 tera = "1"
 time = { version = "0.3.41", features = ["formatting", "local-offset", "macros"] }
 tokio = { version = "1", features = ["full"] }

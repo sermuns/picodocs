@@ -6,6 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use confique::Config;
 use notify::RecursiveMode;
 use notify_debouncer_full::{DebounceEventResult, new_debouncer};
 use std::collections::HashMap;
@@ -17,7 +18,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     assets::{Asset, InMemoryAsset, get_all_assets},
-    config::Conf,
+    config::{Conf, PartialConf},
 };
 
 type AssetMap = Arc<RwLock<HashMap<String, InMemoryAsset>>>;
@@ -84,7 +85,7 @@ async fn sse_handler() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let stream = BroadcastStream::new(RELOAD_TX.subscribe()).map(|_| {
         Result::<Event, Infallible>::Ok(
             Event::default()
-                .retry(Duration::from_secs(1))
+                .retry(Duration::from_millis(250))
                 .data("reload"),
         )
     });
@@ -132,8 +133,8 @@ async fn append_livereload_script(request: Request, next: Next) -> Response {
     Response::from_parts(parts, body::Body::from(modified_body_bytes))
 }
 
-pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()> {
-    let config = Arc::new(config);
+pub async fn run(partial_config: PartialConf, address: String, open: bool) -> anyhow::Result<()> {
+    let config = Arc::new(Conf::from_partial(partial_config).unwrap());
     let docs_dir = &config.docs_dir;
     let state: AssetMap = Arc::new(RwLock::new(HashMap::new()));
 
@@ -192,6 +193,7 @@ pub async fn run(config: Conf, address: String, open: bool) -> anyhow::Result<()
     }
 
     println!("Serving at http://{}", &address);
+    let _ = RELOAD_TX.send("reload".to_string());
 
     axum::serve(listener, app)
         .await
