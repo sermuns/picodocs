@@ -18,7 +18,7 @@ pub enum Command {
     Build {
         /// Where to place rendered site files
         #[arg(short, long)]
-        output_dir: PathBuf,
+        output_dir: Option<PathBuf>,
     },
 
     /// Preview the site with a live-reloading server
