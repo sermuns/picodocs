@@ -1,7 +1,7 @@
 # v0.1.0
 - [-] generate nav
 		- [x] send url to tera templating
-		- [ ] directories -> sections
+		- [x] directories -> sections
 
 # v0.2.0
 - [ ] internal links, with (configurable) linkchecker
