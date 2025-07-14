@@ -141,6 +141,43 @@ static MARKDOWN_OPTIONS: Lazy<Options> = Lazy::new(|| {
     options
 });
 
+fn render_single_markdown_page(md: &str) -> String {
+    use pulldown_cmark::{CowStr, Event, HeadingLevel, Tag};
+
+    let mut previous_heading_level: Option<HeadingLevel> = None;
+    let parser = Parser::new_ext(md, *MARKDOWN_OPTIONS).filter_map(|event| match event {
+        Event::Start(Tag::Heading { level, .. }) => {
+            previous_heading_level = Some(level);
+            None
+        }
+        Event::Text(text) => {
+            let Some(heading_level) = previous_heading_level.take() else {
+                return Some(Event::Text(text));
+            };
+
+            let anchor: String = text
+                .to_lowercase()
+                .chars()
+                .map(|c| if c.is_alphanumeric() { c } else { '-' })
+                .collect();
+
+            let heading_start_and_text = Event::InlineHtml(CowStr::from(format!(
+                "<h{} id=\"{}\">{}",
+                heading_level as u8, anchor, text,
+            )));
+
+            previous_heading_level = None;
+            Some(heading_start_and_text)
+        }
+        _ => Some(event),
+    });
+
+    // reasonable guess for HTML size?
+    let mut html = String::with_capacity((md.len() * 3) / 2);
+    html::push_html(&mut html, parser);
+    html
+}
+
 /// Read all files from `conf.docs_dir`, return generated assets.
 pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
     // (source, relative) for every regular file under docs_dir
@@ -180,10 +217,6 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
                 .await
                 .with_context(|| format!("Failed to read markdown file {src:?}"))?;
 
-            // reasonable guess for HTML size?
-            let mut html = String::with_capacity((md.len() * 3) / 2);
-            html::push_html(&mut html, Parser::new_ext(&md, *MARKDOWN_OPTIONS));
-
             let current_path = {
                 let mut current_path = rel.clone();
                 if rel.file_name() == Some(OsStr::new("index.md")) {
@@ -193,6 +226,9 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
                 }
                 current_path.to_str().unwrap().to_string()
             };
+
+            // FIXME: does this move `md` into function?
+            let html = render_single_markdown_page(&md);
 
             let mut ctx = tera::Context::new();
             ctx.insert("config", &conf);
