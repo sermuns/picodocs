@@ -180,27 +180,22 @@ fn render_single_markdown_page(md: &str) -> String {
 
 /// Read all files from `conf.docs_dir`, return generated assets.
 pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
-    // (source, relative) for every regular file under docs_dir
     let files: Vec<(PathBuf, PathBuf)> = WalkDir::new(&conf.docs_dir)
         .follow_links(conf.follow_links)
         .into_iter()
-        .filter_map(|e| {
-            let entry = e.expect("WalkDir error encountered");
-            if entry.file_type().is_file() {
-                Some(entry)
-            } else {
-                None
+        .filter_map(|entry| {
+            let entry = entry.unwrap();
+            if entry.file_type().is_dir() {
+                return None;
             }
+            // Some(entry)
+
+            let source_path = entry.path();
+            let relative_path = source_path.strip_prefix(&conf.docs_dir).unwrap();
+
+            Some((source_path.into(), relative_path.into()))
         })
-        .map(|e| {
-            let source_path = e.into_path();
-            let relative_path = source_path
-                .strip_prefix(&conf.docs_dir)
-                .with_context(|| format!("Strip prefix failed for {source_path:?}"))?
-                .to_owned();
-            Ok((source_path, relative_path))
-        })
-        .collect::<Result<Vec<_>>>()?;
+        .collect();
 
     let markdown_extension = OsStr::new("md");
     let (pages, assets): (Vec<_>, Vec<_>) = files
