@@ -1,6 +1,6 @@
 use anyhow::Context;
 use once_cell::sync::Lazy;
-use pulldown_cmark::{Parser as MarkdownParser, html};
+use pulldown_cmark::{Options, Parser, html};
 use serde::Serialize;
 use std::fmt;
 use std::path::PathBuf;
@@ -132,6 +132,15 @@ pub enum Asset {
     Static(StaticAsset),
 }
 
+static MARKDOWN_OPTIONS: Lazy<Options> = Lazy::new(|| {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    options
+});
+
 /// Read all files from `conf.docs_dir`, return generated assets.
 pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
     // (source, relative) for every regular file under docs_dir
@@ -169,10 +178,11 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
         tokio::spawn(async move {
             let md = tokio::fs::read_to_string(&src)
                 .await
-                .with_context(|| format!("Read markdown {src:?}"))?;
+                .with_context(|| format!("Failed to read markdown file {src:?}"))?;
 
-            let mut html = String::new();
-            html::push_html(&mut html, MarkdownParser::new(&md));
+            // reasonable guess for HTML size?
+            let mut html = String::with_capacity((md.len() * 3) / 2);
+            html::push_html(&mut html, Parser::new_ext(&md, *MARKDOWN_OPTIONS));
 
             let current_path = {
                 let mut current_path = rel.clone();
