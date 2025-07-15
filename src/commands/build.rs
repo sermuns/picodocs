@@ -12,7 +12,7 @@ use crate::{
 pub async fn run(partial_config: PartialConf, output_dir: Option<PathBuf>) -> anyhow::Result<()> {
     let config = Conf::from_partial(
         PartialConf {
-            output_dir: output_dir,
+            output_dir,
             ..PartialConf::default_values()
         }
         .with_fallback(partial_config),

@@ -11,7 +11,8 @@ include = ["src/**/*", "assets/**/*", "LICENSE", "README.md"]
 [dependencies]
 anyhow = "1"
 axum = { version = "0.8", features = ["ws"] }
-clap = { version = "4.5.40", features = ["derive"] }
+clap = { version = "4.5.40", features = ["cargo", "derive"] }
+clap_complete = "4.5.55"
 confique = { version = "0.3.0", features = ["toml", "yaml"] }
 futures = "0.3.31"
 hyper = "1.6.0"

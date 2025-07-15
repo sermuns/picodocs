@@ -3,7 +3,8 @@ mod assets;
 mod commands;
 mod config;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser, crate_name};
+use clap_complete::generate;
 use confique::Partial;
 use confique::{File, FileFormat};
 
@@ -39,6 +40,10 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Defaults { output_path, force } => {
             commands::defaults::run(output_path, force).await?
+        }
+        Command::Completion { shell } => {
+            let mut cmd = Args::command();
+            generate(shell, &mut cmd, crate_name!(), &mut std::io::stdout());
         }
     }
 

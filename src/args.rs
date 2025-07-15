@@ -42,4 +42,10 @@ pub enum Command {
         #[arg(short, long)]
         force: bool,
     },
+
+    /// Generate shell completions
+    Completion {
+        /// Which shell to generate completions for
+        shell: clap_complete::Shell,
+    },
 }
