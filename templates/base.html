@@ -27,17 +27,16 @@
 
 	<body>
 		<header>
-			<a href="/">{%if config.icon_path%}<img src="/{{config.icon_path}}" width="30" />{%endif%}{{config.title}}</a>
-		</header>
-
-		<nav role="navigation">
-			<input type="checkbox" id="nav-toggle" style="display:none;" />
 			<label for="nav-toggle">
 				<hr>
 				<hr>
 				<hr>
 			</label>
+			<a href="/">{%if config.icon_path%}<img src="/{{config.icon_path}}" width="30" />{%endif%}{{config.title}}</a>
+		</header>
 
+		<nav role="navigation">
+			<input type="checkbox" id="nav-toggle" style="display:none;" />
 			{{ self::generate_nav(root=sitemap) }}
 		</nav>
 

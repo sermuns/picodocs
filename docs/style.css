@@ -17,7 +17,7 @@
 		var(--accent-color) 45%,
 		var(--harsh-color) 55%
 	);
-	--line-thickness: round(0.3rem, 1px);
+	--line-thickness: round(0.2rem, 1px);
 
 	--main-padding: 2rem;
 
@@ -39,7 +39,7 @@ body {
 		"header header header"
 		"nav main _"
 		"footer footer footer";
-	--left-sidebar-width: 12rem;
+	--left-sidebar-width: 15rem;
 	grid-template-columns: var(--left-sidebar-width) 1fr var(--left-sidebar-width);
 	grid-template-rows: auto 1fr auto;
 }
@@ -47,15 +47,22 @@ body {
 header {
 	grid-area: header;
 	display: flex;
-	padding: 0.5rem 3rem;
-	> a {
-		font-size: 150%;
-		font-weight: bold;
-		display: flex;
-		gap: 1rem;
-	}
+	padding: 0.5rem var(--main-padding);
 	background-color: var(--border-color);
 	margin-bottom: 2rem;
+	align-items: center;
+	gap: 2rem;
+
+	> a {
+		font-size: 150%;
+		font-weight: 600;
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	> label {
+		display: none;
+	}
 
 	position: relative;
 	&::after {
@@ -73,21 +80,25 @@ header {
 nav {
 	grid-area: nav;
 	flex-direction: column;
-	padding: var(--main-padding);
+	padding-left: var(--main-padding);
 
-	a {
-		display: block;
+	> a {
+		font-weight: 600;
+		font-size: 125%;
+		:not(input) + & {
+			margin-top: 1rem;
+		}
 	}
 
-	> * {
-		opacity: 0.8;
+	a {
+		opacity: 0.7;
 		&:hover {
 			opacity: 1;
 		}
 	}
 
-	label {
-		display: none;
+	> * {
+		display: block;
 	}
 }
 
@@ -95,9 +106,9 @@ main {
 	box-sizing: border-box;
 	grid-area: main;
 	width: min(100%, 60rem);
+	padding: 0 var(--main-padding);
 	min-width: 0;
 	justify-self: center;
-	padding: var(--main-padding);
 }
 
 footer {
@@ -166,7 +177,7 @@ hr {
 
 /* MOBILE STYLES */
 /* max-width = 2 * --navbar-width + --main-width */
-@media (max-width: 80rem) {
+@media (max-width: 90rem) {
 	body {
 		grid-template-areas:
 			"header"
@@ -177,26 +188,8 @@ hr {
 		grid-template-rows: auto auto 1fr auto;
 	}
 
-	nav {
-		margin: unset;
-		gap: 0;
-		flex-direction: column;
-
-		> a {
-			font-size: 150%;
-			* + & {
-				margin-top: 1rem;
-			}
-		}
-
-		input:checked ~ label {
-			gap: 0.7rem;
-		}
-
-		input:not(:checked) ~ :not(label) {
-			display: none;
-		}
-
+	header {
+		margin-bottom: 1rem;
 		label {
 			display: flex;
 			flex-direction: column;
@@ -205,11 +198,19 @@ hr {
 			gap: round(0.5rem, 1px);
 			hr {
 				display: block;
-				width: 3rem;
+				width: 2rem;
 				height: var(--line-thickness);
 				margin: 0;
 				border: none;
 			}
+		}
+	}
+
+	nav {
+		padding-top: 0;
+		margin-bottom: 2rem;
+		input:not(:checked) ~ * {
+			display: none;
 		}
 	}
 }
