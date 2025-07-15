@@ -1,3 +1,7 @@
+---
+title: Installation
+---
+
 # Installation
 
 There are many ways to install picodocs. Pick one you feel comfortable with!

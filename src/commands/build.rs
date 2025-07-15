@@ -46,7 +46,7 @@ pub async fn run(partial_config: PartialConf, output_dir: Option<PathBuf>) -> an
                         .await
                         .with_context(|| format!("Failed to create directory: {parent:?}"))?;
                 }
-                tokio::fs::write(&output_path, &page.content)
+                tokio::fs::write(&output_path, &page.rendered)
                     .await
                     .with_context(|| format!("Failed to write HTML file: {output_path:?}"))?;
             }

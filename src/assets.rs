@@ -1,7 +1,7 @@
 use anyhow::Context;
 use once_cell::sync::Lazy;
 use pulldown_cmark::{Options, Parser, html};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 use tera::Tera;
@@ -14,8 +14,9 @@ static TERA: Lazy<Tera> =
 
 /// A built HTML file, ready to be dumped into the output directory or served
 pub struct Page {
-    pub content: String,
+    pub rendered: String,
     pub url_path: String,
+    pub front_matter: Option<FrontMatter>,
 }
 
 /// A static file (non-markdown) to be served or copied
@@ -141,11 +142,33 @@ static MARKDOWN_OPTIONS: Lazy<Options> = Lazy::new(|| {
     options
 });
 
-fn render_single_markdown_page(md: &str) -> String {
+pub fn extract_front_matter(md: &str) -> Result<(Option<FrontMatter>, &str)> {
+    const DELIMITER: &str = "---";
+
+    if !md.starts_with(DELIMITER) {
+        return Ok((None, md));
+    }
+
+    let content = &md[DELIMITER.len()..];
+    let end = content
+        .find(DELIMITER)
+        .context("failed to find end of front matter")?;
+
+    let fm: FrontMatter =
+        serde_yaml::from_str(&content[..end]).context("failed to parse front matter")?;
+
+    let rest = &content[end + DELIMITER.len()..];
+
+    Ok((Some(fm), rest))
+}
+
+fn render_single_markdown_page(md: &str) -> (String, Option<FrontMatter>) {
     use pulldown_cmark::{CowStr, Event, HeadingLevel, Tag};
 
+    let (front_matter, rest) = extract_front_matter(md).unwrap_or((None, md));
+
     let mut previous_heading_level: Option<HeadingLevel> = None;
-    let parser = Parser::new_ext(md, *MARKDOWN_OPTIONS).filter_map(|event| match event {
+    let parser = Parser::new_ext(rest, *MARKDOWN_OPTIONS).filter_map(|event| match event {
         Event::Start(Tag::Heading { level, .. }) => {
             previous_heading_level = Some(level);
             None
@@ -175,7 +198,15 @@ fn render_single_markdown_page(md: &str) -> String {
     // reasonable guess for HTML size?
     let mut html = String::with_capacity((md.len() * 3) / 2);
     html::push_html(&mut html, parser);
-    html
+
+    (html, front_matter)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FrontMatter {
+    title: Option<String>,
+    description: Option<String>,
+    keywords: Option<Vec<String>>,
 }
 
 /// Read all files from `conf.docs_dir`, return generated assets.
@@ -223,7 +254,7 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
             };
 
             // FIXME: does this move `md` into function?
-            let html = render_single_markdown_page(&md);
+            let (html, front_matter) = render_single_markdown_page(&md);
 
             let mut ctx = tera::Context::new();
             ctx.insert("config", &conf);
@@ -231,13 +262,21 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
             ctx.insert("current_path", &current_path);
             ctx.insert("content", &html);
 
+            if let Some(front_matter) = &front_matter {
+                ctx.extend(
+                    tera::Context::from_serialize(front_matter)
+                        .with_context(|| format!("Serialize front matter for {src:?}"))?,
+                );
+            }
+
             let rendered = TERA
                 .render("base.html", &ctx)
                 .with_context(|| format!("Render template for {src:?}"))?;
 
             Ok(Page {
-                content: rendered,
+                rendered,
                 url_path: current_path,
+                front_matter,
             })
         })
     });

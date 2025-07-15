@@ -34,7 +34,7 @@ async fn serve_from_memory(State(assets): State<AssetMap>, req: Request) -> impl
             InMemoryAsset::Page(p) => Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "text/html")
-                .body(Body::from(p.content.clone()))
+                .body(Body::from(p.rendered.clone()))
                 .unwrap()
                 .into_response(),
             InMemoryAsset::Static(s) => Response::builder()
