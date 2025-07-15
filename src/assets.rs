@@ -234,10 +234,11 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
         .partition(|(src, _)| src.extension() == Some(markdown_extension));
 
     let sitemap = Arc::new(SitemapNode::new(&pages));
+    let config = Arc::new(conf.clone());
 
     let page_render_tasks = pages.into_iter().map(|(src, rel)| {
-        let conf = conf.clone();
         let sitemap = Arc::clone(&sitemap);
+        let config = Arc::clone(&config);
         tokio::spawn(async move {
             let md = tokio::fs::read_to_string(&src)
                 .await
@@ -257,7 +258,7 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
             let (html, front_matter) = render_single_markdown_page(&md);
 
             let mut ctx = tera::Context::new();
-            ctx.insert("config", &conf);
+            ctx.insert("config", &*config);
             ctx.insert("sitemap", &*sitemap);
             ctx.insert("current_path", &current_path);
             ctx.insert("content", &html);

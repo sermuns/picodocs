@@ -1,6 +1,15 @@
 use confique::Config;
+use serde::Deserialize;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum NavItem {
+    Path(String),
+    ExternalLink(BTreeMap<String, String>),
+    Section(BTreeMap<String, Vec<NavItem>>),
+}
 
 #[derive(Config, Clone, Debug, Serialize)]
 pub struct Conf {
@@ -29,6 +38,9 @@ pub struct Conf {
     /// Follow symbolic links when traversing the docs directory
     #[config(default = false)]
     pub follow_links: bool,
+
+    /// (If defined) controls the sitemap structure
+    pub nav: Option<Vec<NavItem>>,
 }
 
 pub type PartialConf = <Conf as Config>::Partial;
