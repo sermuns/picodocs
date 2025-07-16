@@ -25,7 +25,11 @@ pulldown-cmark = "0.13.0"
 serde = "1.0.219"
 serde_yaml = "0.9.34"
 tera = "1"
-time = { version = "0.3.41", features = ["formatting", "local-offset", "macros"] }
+time = { version = "0.3.41", features = [
+	"formatting",
+	"local-offset",
+	"macros",
+] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 toml = "0.9.0"
@@ -35,3 +39,6 @@ walkdir = "2.5.0"
 strip = true
 lto = true
 codegen-units = 1
+
+[profile.dev]
+debug = 0
