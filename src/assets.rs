@@ -66,63 +66,56 @@ pub struct SitemapNode {
 impl SitemapNode {
     pub fn new(pages: &[(PathBuf, PathBuf)]) -> Self {
         fn build(base: &Path, paths: &[PathBuf]) -> Vec<SitemapNode> {
-            let mut map: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
-
+            let mut groups: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
             for path in paths {
-                if let Some((first, rest)) = path.iter().collect::<Vec<_>>().split_first() {
-                    let entry = map.entry(first.to_string_lossy().into_owned()).or_default();
-                    entry.push(PathBuf::from_iter(rest.iter()));
+                let mut iter = path.iter();
+                if let Some(first) = iter.next() {
+                    groups
+                        .entry(first.to_string_lossy().into_owned())
+                        .or_default()
+                        .push(iter.collect());
                 }
             }
 
-            map.into_iter()
+            groups
+                .into_iter()
                 .filter_map(|(segment, children)| {
                     let full_path = base.join(&segment);
+                    let is_index = full_path == Path::new("index.md");
                     let all_empty = children.iter().all(|p| p.as_os_str().is_empty());
 
-                    if all_empty {
-                        if full_path.file_name() == Some(OsStr::new("index.md"))
-                            && full_path.parent().is_some()
-                        {
-                            return None;
-                        }
-                        let path = if full_path == Path::new("index.md") {
-                            "".to_string()
-                        } else {
-                            full_path.with_extension("").to_string_lossy().to_string()
-                        };
-
-                        let file_stem =
-                            full_path.file_stem().unwrap().to_string_lossy().to_string();
-
-                        Some(SitemapNode {
-                            title: file_stem,
-                            path: Some(path),
-                            children: Vec::new(),
-                        })
-                    } else {
-                        let path = if full_path == Path::new("index.md") {
-                            "".to_string()
-                        } else {
-                            full_path.with_extension("").to_string_lossy().to_string()
-                        };
-                        Some(SitemapNode {
-                            title: segment,
-                            path: Some(path),
-                            children: build(&full_path, &children),
-                        })
+                    if all_empty && segment == "index.md" && base != Path::new("") {
+                        return None;
                     }
+
+                    let path = if is_index {
+                        "".to_string()
+                    } else {
+                        full_path.with_extension("").to_string_lossy().to_string()
+                    };
+
+                    Some(SitemapNode {
+                        title: full_path
+                            .file_stem()
+                            .unwrap_or_else(|| OsStr::new(""))
+                            .to_string_lossy()
+                            .to_string(),
+                        path: Some(path),
+                        children: if all_empty {
+                            Vec::new()
+                        } else {
+                            build(&full_path, &children)
+                        },
+                    })
                 })
                 .collect()
         }
 
+        let child_paths = pages.iter().map(|(_, p)| p.clone()).collect::<Vec<_>>();
         SitemapNode {
             title: "".to_string(),
             path: None,
-            children: build(
-                Path::new(""),
-                &pages.iter().map(|(_, p)| p.clone()).collect::<Vec<_>>(),
-            ),
+            children: build(Path::new(""), &child_paths),
         }
     }
 }
