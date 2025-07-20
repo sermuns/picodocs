@@ -14,22 +14,28 @@ use std::sync::Arc;
 use std::time::Duration;
 use time::format_description::BorrowedFormatItem;
 use time::macros::format_description;
-use tokio::sync::RwLock;
 
 use crate::{
     assets::{Asset, InMemoryAsset, get_all_assets},
     config::{Conf, PartialConf},
 };
 
-type AssetMap = Arc<RwLock<HashMap<String, InMemoryAsset>>>;
-
 const SIMPLE_TIME_FORMAT: &[BorrowedFormatItem<'_>] =
     format_description!("[hour]:[minute]:[second]");
 
 use axum::extract::{Request, State};
-async fn serve_from_memory(State(assets): State<AssetMap>, req: Request) -> impl IntoResponse {
+
+type AssetMapLock = Arc<RwLock<HashMap<String, InMemoryAsset>>>;
+
+async fn serve_from_memory(
+    State(asset_map_lock): State<AssetMapLock>,
+    req: Request,
+) -> impl IntoResponse {
     let path = req.uri().path().trim_start_matches('/');
-    match assets.read().await.get(path) {
+
+    let map = asset_map_lock.read().unwrap();
+
+    match map.get(path) {
         Some(asset) => match asset {
             InMemoryAsset::Page(p) => Response::builder()
                 .status(StatusCode::OK)
@@ -51,11 +57,15 @@ async fn serve_from_memory(State(assets): State<AssetMap>, req: Request) -> impl
             .into_response(),
     }
 }
+fn rebuild_in_memory_assets(
+    config: &Conf,
+    store: &RwLock<HashMap<String, InMemoryAsset>>,
+) -> anyhow::Result<()> {
+    let mut map = store
+        .write()
+        .map_err(|e| anyhow::anyhow!("Failed to acquire write lock: {}", e))?;
 
-async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Result<()> {
-    let assets = get_all_assets(config).await?;
-
-    let updated_asset_map = assets
+    *map = get_all_assets(config)?
         .into_iter()
         .map(|asset| match asset {
             Asset::Page(page) => (page.url_path.clone(), InMemoryAsset::Page(page)),
@@ -66,13 +76,12 @@ async fn rebuild_in_memory_assets(config: &Conf, store: &AssetMap) -> anyhow::Re
         })
         .collect::<HashMap<_, _>>();
 
-    *store.write().await = updated_asset_map;
     Ok(())
 }
 
 use once_cell::sync::Lazy;
 use tokio::sync::broadcast;
-static RELOAD_TX: Lazy<broadcast::Sender<String>> = Lazy::new(|| {
+static RELOAD_TX: Lazy<broadcast::Sender<()>> = Lazy::new(|| {
     let (tx, _) = broadcast::channel(100);
     tx
 });
@@ -133,71 +142,84 @@ async fn append_livereload_script(request: Request, next: Next) -> Response {
     Response::from_parts(parts, body::Body::from(modified_body_bytes))
 }
 
-pub async fn run(partial_config: PartialConf, address: String, open: bool) -> anyhow::Result<()> {
+use std::sync::RwLock;
+
+pub fn run(partial_config: PartialConf, address: String, open: bool) -> anyhow::Result<()> {
     let config = Arc::new(Conf::from_partial(partial_config).unwrap());
-    let docs_dir = &config.docs_dir;
-    let state: AssetMap = Arc::new(RwLock::new(HashMap::new()));
+    let docs_dir = config.docs_dir.clone();
 
-    use notify::EventKind::{Create, Modify, Remove};
-    use time::OffsetDateTime;
-    let mut debouncer = new_debouncer(Duration::from_millis(250), None, {
-        let config = Arc::clone(&config);
-        let state = Arc::clone(&state);
-        let rt = tokio::runtime::Handle::current();
-        move |result: DebounceEventResult| {
-            if let Ok(events) = &result {
-                if events
-                    .iter()
-                    .any(|e| matches!(e.event.kind, Create(_) | Modify(_) | Remove(_)))
-                {
-                    let now = OffsetDateTime::now_local()
-                        .unwrap_or(OffsetDateTime::now_utc())
-                        .time()
-                        .format(SIMPLE_TIME_FORMAT)
-                        .unwrap_or("?".to_string());
+    let asset_map = Arc::new(RwLock::new(HashMap::new()));
 
-                    println!("[{now}] Detected change in docs directory, rebuilding...");
+    let config_for_thread = Arc::clone(&config);
+    let asset_map_for_thread = Arc::clone(&asset_map);
 
-                    if let Err(e) = rt.block_on(rebuild_in_memory_assets(&config, &state)) {
-                        eprintln!("Error rebuilding assets: {e}");
+    std::thread::spawn(move || {
+        use notify::EventKind::{Create, Modify, Remove};
+        use time::OffsetDateTime;
+
+        let mut debouncer = new_debouncer(
+            Duration::from_millis(250),
+            None,
+            move |res: DebounceEventResult| {
+                if let Ok(events) = &res {
+                    if events
+                        .iter()
+                        .any(|e| matches!(e.event.kind, Create(_) | Modify(_) | Remove(_)))
+                    {
+                        let now = OffsetDateTime::now_local()
+                            .unwrap_or_else(|_| OffsetDateTime::now_utc())
+                            .time()
+                            .format(SIMPLE_TIME_FORMAT)
+                            .unwrap_or_else(|_| "?".to_string());
+
+                        println!("[{now}] Change detected, rebuilding...");
+
+                        if let Err(e) =
+                            rebuild_in_memory_assets(&config_for_thread, &asset_map_for_thread)
+                        {
+                            eprintln!("Error rebuilding assets: {}", e);
+                        } else if let Err(e) = RELOAD_TX.send(()) {
+                            eprintln!("Error sending reload message: {}", e);
+                        }
                     }
-
-                    let _ = RELOAD_TX.send("reload".to_string());
                 }
-            }
+            },
+        )
+        .expect("Failed to set up file watcher");
+
+        debouncer
+            .watch(&docs_dir, RecursiveMode::Recursive)
+            .expect("Failed to watch docs_dir");
+
+        loop {
+            std::thread::park();
         }
+    });
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        rebuild_in_memory_assets(&config, &asset_map)?;
+
+        let app = Router::new()
+            .fallback(get(serve_from_memory))
+            .with_state(Arc::clone(&asset_map))
+            .layer(axum::middleware::from_fn(append_livereload_script))
+            .route("/~~~picodocs-reload", get(sse_handler));
+
+        let listener = tokio::net::TcpListener::bind(&address)
+            .await
+            .with_context(|| format!("Failed to bind to address: {address}"))?;
+
+        if open {
+            open::that(format!("http://{}", &address))
+                .with_context(|| format!("Failed to open browser at http://{}", &address))?;
+        }
+
+        println!("Serving at http://{}", &address);
+        let _ = RELOAD_TX.send(());
+
+        axum::serve(listener, app)
+            .await
+            .context("Failed to start server")
     })
-    .context("Failed to set up file watcher!")?;
-
-    debouncer
-        .watch(docs_dir, RecursiveMode::Recursive)
-        .with_context(|| format!("Failed to watch docs_dir: {docs_dir:?}"))?;
-
-    rebuild_in_memory_assets(&config, &state)
-        .await
-        .context("Failed to perform intial build")?;
-
-    let app = Router::new()
-        .fallback(get(serve_from_memory))
-        .with_state(state)
-        .layer(axum::middleware::from_fn(append_livereload_script))
-        .route("/~~~picodocs-reload", get(sse_handler));
-
-    let listener = tokio::net::TcpListener::bind(&address)
-        .await
-        .with_context(|| format!("Failed to bind to address: {address}"))?;
-
-    if open {
-        open::that(format!("http://{}", &address))
-            .with_context(|| format!("Failed to open browser at http://{}", &address))?;
-    }
-
-    println!("Serving at http://{}", &address);
-    let _ = RELOAD_TX.send("reload".to_string());
-
-    axum::serve(listener, app)
-        .await
-        .context("Failed to start server")?;
-
-    Ok(())
 }

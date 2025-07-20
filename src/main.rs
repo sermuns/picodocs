@@ -13,8 +13,7 @@ use crate::{
     config::PartialConf,
 };
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let partial_conf = File::with_format(
@@ -34,13 +33,9 @@ async fn main() -> anyhow::Result<()> {
     .with_fallback(PartialConf::default_values());
 
     match args.command {
-        Command::Build { output_dir } => commands::build::run(partial_conf, output_dir).await?,
-        Command::Serve { address, open } => {
-            commands::serve::run(partial_conf, address, open).await?
-        }
-        Command::Defaults { output_path, force } => {
-            commands::defaults::run(output_path, force).await?
-        }
+        Command::Build { output_dir } => commands::build::run(partial_conf, output_dir)?,
+        Command::Serve { address, open } => commands::serve::run(partial_conf, address, open)?,
+        Command::Defaults { output_path, force } => commands::defaults::run(output_path, force)?,
         Command::Completion { shell } => {
             let mut cmd = Args::command();
             generate(shell, &mut cmd, crate_name!(), &mut std::io::stdout());

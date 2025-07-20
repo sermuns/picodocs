@@ -1,10 +1,11 @@
 use anyhow::Context;
 use confique::{Config, Partial};
+use std::fs;
 use std::path::PathBuf;
 
 use crate::config::Conf;
 
-pub async fn run(output_path: PathBuf, force: bool) -> anyhow::Result<()> {
+pub fn run(output_path: PathBuf, force: bool) -> anyhow::Result<()> {
     if output_path.exists() && !force {
         anyhow::bail!(
             "{:?} already exists. Aborting. Use --force to overwrite.",
@@ -15,7 +16,7 @@ pub async fn run(output_path: PathBuf, force: bool) -> anyhow::Result<()> {
     let default_conf = Conf::from_partial(<Conf as confique::Config>::Partial::default_values())
         .context("Failed to get default configuration")?;
 
-    tokio::fs::write(
+    fs::write(
         &output_path,
         match output_path.extension().unwrap().to_str().unwrap() {
             "yml" | "yaml" => serde_yaml::to_string(&default_conf)
@@ -28,7 +29,6 @@ pub async fn run(output_path: PathBuf, force: bool) -> anyhow::Result<()> {
             ),
         },
     )
-    .await
     .with_context(|| {
         format!(
             "Failed to write default configuration to {:?}",

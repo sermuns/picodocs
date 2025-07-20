@@ -52,10 +52,9 @@ impl fmt::Debug for StaticAsset {
 }
 
 use anyhow::Result;
-use futures::future::join_all;
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::path::Path;
-use std::{ffi::OsStr, sync::Arc};
 
 #[derive(Debug, Serialize)]
 pub struct SitemapNode {
@@ -210,19 +209,18 @@ pub struct FrontMatter {
 }
 
 /// Read all files from `conf.docs_dir`, return generated assets.
-pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
+pub fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
     let files: Vec<(PathBuf, PathBuf)> = WalkDir::new(&conf.docs_dir)
         .follow_links(conf.follow_links)
         .into_iter()
         .filter_map(|entry| {
-            let entry = entry.unwrap();
+            let entry = entry.ok()?;
             if entry.file_type().is_dir() {
                 return None;
             }
-            // Some(entry)
 
             let source_path = entry.path();
-            let relative_path = source_path.strip_prefix(&conf.docs_dir).unwrap();
+            let relative_path = source_path.strip_prefix(&conf.docs_dir).ok()?;
 
             Some((source_path.into(), relative_path.into()))
         })
@@ -233,82 +231,58 @@ pub async fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
         .into_iter()
         .partition(|(src, _)| src.extension() == Some(markdown_extension));
 
-    let sitemap = Arc::new(SitemapNode::new(&pages));
-    let config = Arc::new(conf.clone());
+    let sitemap = SitemapNode::new(&pages);
+    let config = conf.clone();
 
-    let page_render_tasks = pages.into_iter().map(|(src, rel)| {
-        let sitemap = Arc::clone(&sitemap);
-        let config = Arc::clone(&config);
-        tokio::spawn(async move {
-            let md = tokio::fs::read_to_string(&src)
-                .await
-                .with_context(|| format!("Failed to read markdown file {src:?}"))?;
+    let mut result = Vec::new();
 
-            let current_path = {
-                let mut current_path = rel.clone();
-                if rel.file_name() == Some(OsStr::new("index.md")) {
-                    current_path.pop();
-                } else {
-                    current_path.set_extension(""); // Remove the extension
-                }
-                current_path.to_str().unwrap().to_string()
-            };
+    for (src, rel) in pages {
+        let md = std::fs::read_to_string(&src)
+            .with_context(|| format!("Failed to read markdown file {src:?}"))?;
 
-            // FIXME: does this move `md` into function?
-            let (html, front_matter) = render_single_markdown_page(&md);
+        let mut current_path = rel.clone();
+        if rel.file_name() == Some(OsStr::new("index.md")) {
+            current_path.pop();
+        } else {
+            current_path.set_extension(""); // Remove the extension
+        }
+        let current_path = current_path.to_str().unwrap().to_string();
 
-            let mut ctx = tera::Context::new();
-            ctx.insert("config", &*config);
-            ctx.insert("sitemap", &*sitemap);
-            ctx.insert("current_path", &current_path);
-            ctx.insert("content", &html);
+        let (html, front_matter) = render_single_markdown_page(&md);
 
-            if let Some(front_matter) = &front_matter {
-                ctx.extend(
-                    tera::Context::from_serialize(front_matter)
-                        .with_context(|| format!("Serialize front matter for {src:?}"))?,
-                );
-            }
+        let mut ctx = tera::Context::new();
+        ctx.insert("config", &config);
+        ctx.insert("sitemap", &sitemap);
+        ctx.insert("current_path", &current_path);
+        ctx.insert("content", &html);
 
-            let rendered = TERA
-                .render("base.html", &ctx)
-                .with_context(|| format!("Render template for {src:?}"))?;
+        if let Some(front_matter) = &front_matter {
+            ctx.extend(
+                tera::Context::from_serialize(front_matter)
+                    .with_context(|| format!("Serialize front matter for {src:?}"))?,
+            );
+        }
 
-            Ok(Page {
-                rendered,
-                url_path: current_path,
-                front_matter,
-            })
-        })
-    });
+        let rendered = TERA
+            .render("base.html", &ctx)
+            .with_context(|| format!("Render template for {src:?}"))?;
 
-    let asset_render_tasks = assets.into_iter().map(|(src, rel)| {
-        tokio::spawn(async move {
-            Ok(StaticAsset {
-                content: tokio::fs::read(&src)
-                    .await
-                    .with_context(|| format!("Read static file {src:?}"))?,
-                url_path: rel.to_string_lossy().into_owned(),
-                mime_type: mime_guess::from_path(&src).first_or_octet_stream(),
-            })
-        })
-    });
+        result.push(Asset::Page(Page {
+            rendered,
+            url_path: current_path,
+            front_matter,
+        }));
+    }
 
-    let page_assets = join_all(page_render_tasks)
-        .await
-        .into_iter()
-        .map(|res| res.map_err(|e| anyhow::anyhow!(e)).and_then(|r| r))
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .map(Asset::Page);
+    for (src, rel) in assets {
+        let content = std::fs::read(&src).with_context(|| format!("Read static file {src:?}"))?;
 
-    let static_assets = join_all(asset_render_tasks)
-        .await
-        .into_iter()
-        .map(|res| res.map_err(|e| anyhow::anyhow!(e)).and_then(|r| r))
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .map(Asset::Static);
+        result.push(Asset::Static(StaticAsset {
+            content,
+            url_path: rel.to_string_lossy().into_owned(),
+            mime_type: mime_guess::from_path(&src).first_or_octet_stream(),
+        }));
+    }
 
-    Ok(page_assets.chain(static_assets).collect())
+    Ok(result)
 }
