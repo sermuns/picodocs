@@ -1,6 +1,6 @@
 use anyhow::Context;
 use once_cell::sync::Lazy;
-use pulldown_cmark::{Options, Parser, html};
+use pulldown_cmark::Options;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
@@ -89,9 +89,9 @@ impl SitemapNode {
                     }
 
                     let path = if is_index {
-                        "".to_string()
+                        String::new()
                     } else {
-                        full_path.with_extension("").to_string_lossy().to_string()
+                        full_path.with_extension("").to_string_lossy().into_owned()
                     };
 
                     Some(SitemapNode {
@@ -111,7 +111,7 @@ impl SitemapNode {
                 .collect()
         }
 
-        let child_paths = pages.iter().map(|(_, p)| p.clone()).collect::<Vec<_>>();
+        let child_paths: Vec<_> = pages.iter().map(|(_, p)| p.clone()).collect();
         SitemapNode {
             title: "".to_string(),
             path: None,
@@ -155,7 +155,7 @@ pub fn extract_front_matter(md: &str) -> Result<(Option<FrontMatter>, &str)> {
 }
 
 fn render_single_markdown_page(md: &str) -> (String, Option<FrontMatter>) {
-    use pulldown_cmark::{CowStr, Event, HeadingLevel, Tag};
+    use pulldown_cmark::{CowStr, Event, HeadingLevel, Parser, Tag, html};
 
     let (front_matter, rest) = extract_front_matter(md).unwrap_or((None, md));
 
@@ -202,9 +202,9 @@ pub struct FrontMatter {
 }
 
 /// Read all files from `conf.docs_dir`, return generated assets.
-pub fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
-    let files: Vec<(PathBuf, PathBuf)> = WalkDir::new(&conf.docs_dir)
-        .follow_links(conf.follow_links)
+pub fn get_all_assets(config: &Conf) -> Result<Vec<Asset>> {
+    let files: Vec<(PathBuf, PathBuf)> = WalkDir::new(&config.docs_dir)
+        .follow_links(config.follow_links)
         .into_iter()
         .filter_map(|entry| {
             let entry = entry.ok()?;
@@ -213,33 +213,33 @@ pub fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
             }
 
             let source_path = entry.path();
-            let relative_path = source_path.strip_prefix(&conf.docs_dir).ok()?;
+            let relative_path = source_path.strip_prefix(&config.docs_dir).ok()?;
 
             Some((source_path.into(), relative_path.into()))
         })
         .collect();
 
-    let markdown_extension = OsStr::new("md");
     let (pages, assets): (Vec<_>, Vec<_>) = files
         .into_iter()
-        .partition(|(src, _)| src.extension() == Some(markdown_extension));
+        .partition(|(src, _)| src.extension() == Some(OsStr::new("md")));
 
     let sitemap = SitemapNode::new(&pages);
-    let config = conf.clone();
 
-    let mut result = Vec::new();
+    let mut all_assets = Vec::new();
 
     for (src, rel) in pages {
         let md = std::fs::read_to_string(&src)
             .with_context(|| format!("Failed to read markdown file {src:?}"))?;
 
-        let mut current_path = rel.clone();
-        if rel.file_name() == Some(OsStr::new("index.md")) {
-            current_path.pop();
-        } else {
-            current_path.set_extension(""); // Remove the extension
-        }
-        let current_path = current_path.to_str().unwrap().to_string();
+        let current_path = {
+            let mut p = rel.clone();
+            if rel.file_name() == Some(OsStr::new("index.md")) {
+                p.pop();
+            } else {
+                p.set_extension("");
+            }
+            p.to_str().unwrap().to_string()
+        };
 
         let (html, front_matter) = render_single_markdown_page(&md);
 
@@ -260,7 +260,7 @@ pub fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
             .render("base.html", &ctx)
             .with_context(|| format!("Render template for {src:?}"))?;
 
-        result.push(Asset::Page(Page {
+        all_assets.push(Asset::Page(Page {
             rendered,
             url_path: current_path,
             front_matter,
@@ -270,12 +270,12 @@ pub fn get_all_assets(conf: &Conf) -> Result<Vec<Asset>> {
     for (src, rel) in assets {
         let content = std::fs::read(&src).with_context(|| format!("Read static file {src:?}"))?;
 
-        result.push(Asset::Static(StaticAsset {
+        all_assets.push(Asset::Static(StaticAsset {
             content,
             url_path: rel.to_string_lossy().into_owned(),
             mime_type: mime_guess::from_path(&src).first_or_octet_stream(),
         }));
     }
 
-    Ok(result)
+    Ok(all_assets)
 }
