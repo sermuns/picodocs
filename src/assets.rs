@@ -67,7 +67,7 @@ pub struct SitemapNode {
 impl SitemapNode {
     pub fn new(pages: &[Page]) -> Self {
         fn build(path_prefix: &Path, pages: &[Page]) -> Vec<SitemapNode> {
-            let mut groups: BTreeMap<String, Vec<Page>> = BTreeMap::new();
+            let mut groups: Vec<String> = Vec::new();
             let mut remaining_pages_for_group: BTreeMap<String, Vec<Page>> = BTreeMap::new();
 
             for page in pages {
@@ -80,14 +80,11 @@ impl SitemapNode {
 
                 if let Some(first_segment) = parts.first() {
                     let segment = first_segment.to_string();
-                    let children = groups.entry(segment.clone()).or_default();
-                    children.push(page.clone());
+                    groups.push(segment.clone());
 
-                    // Prepare the 'remaining' path for the recursive call
                     let mut remaining_path_buf = PathBuf::from("");
                     for (i, part) in parts.iter().enumerate() {
                         if i > 0 {
-                            // Skip the first segment, as it's handled by current level
                             remaining_path_buf.push(part);
                         }
                     }
@@ -106,10 +103,7 @@ impl SitemapNode {
                         .unwrap_or(OsStr::new(""))
                         .to_string_lossy()
                         .into_owned();
-                    groups
-                        .entry(segment.clone())
-                        .or_default()
-                        .push(page.clone());
+                    groups.push(segment.clone());
                     remaining_pages_for_group
                         .entry(segment)
                         .or_default()
@@ -119,9 +113,9 @@ impl SitemapNode {
 
             groups
                 .into_iter()
-                .filter_map(|(segment, _original_children)| {
-                    let current_segment_path = PathBuf::from(&segment); // Path for *this* level's segment
-                    let full_node_path = path_prefix.join(&current_segment_path); // Accumulate full path for output
+                .filter_map(|segment| {
+                    let current_segment_path = PathBuf::from(&segment);
+                    let full_node_path = path_prefix.join(&current_segment_path);
                     let children_for_recursion = remaining_pages_for_group
                         .get(&segment)
                         .cloned()
