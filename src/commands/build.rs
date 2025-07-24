@@ -20,7 +20,6 @@ pub fn run(partial_config: PartialConf, output_dir: Option<PathBuf>) -> anyhow::
     )?;
 
     let before_build = Instant::now();
-    println!("Building site with configuration: {config:?}");
 
     match fs::remove_dir_all(&config.output_dir) {
         Ok(_) => {}
