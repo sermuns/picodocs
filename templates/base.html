@@ -1,8 +1,6 @@
 {% macro generate_nav(root) %}
 {% for child in root.children %}
-	<a
-		href="/{{ child.path }}" {% if child.path == current_path %}style="text-decoration:underline;"{% endif %}>{{ child.title }}</a>
-
+	<a href="/{{ child.path }}" {% if child.path == current_path %}style="text-decoration:underline;"{% endif %}>{{ child.title }}</a>
 	{% if child.children %}
 		<div>{{ self::generate_nav(root=child) }}</div>
 	{% endif %}
@@ -37,7 +35,7 @@
 
 		<nav role="navigation">
 			<input type="checkbox" id="nav-toggle" style="display:none;" />
-			{{ self::generate_nav(root=sitemap) }}
+			{{ self::generate_nav(root=sitemap_root) }}
 		</nav>
 
 		<main>
