@@ -298,10 +298,10 @@ pub fn get_all_assets(config: &Conf) -> Result<Vec<Asset>> {
 
     for page in pages {
         let mut ctx = tera::Context::new();
-        ctx.insert("config", &config);
-        ctx.insert("sitemap", &sitemap);
-        ctx.insert("current_path", &page.url_path);
-        ctx.insert("content", &page.rendered);
+        ctx.try_insert("config", &config)?;
+        ctx.try_insert("sitemap", &sitemap)?;
+        ctx.try_insert("current_path", &page.url_path)?;
+        ctx.try_insert("content", &page.rendered)?;
 
         if let Some(front_matter) = &page.front_matter {
             ctx.extend(
