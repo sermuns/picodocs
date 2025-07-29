@@ -7,6 +7,7 @@ license-file = "LICENSE"
 keywords = ["documentation", "docs", "markdown", "static", "site", "generator"]
 categories = ["command-line-utilities", "web-programming::http-server"]
 include = ["src/**/*", "assets/**/*", "LICENSE", "README.md"]
+authors = ["Samuel Åkesson <sermuns@lysator.liu.se>"]
 
 [dependencies]
 anyhow = "1"
