@@ -294,12 +294,12 @@ pub fn get_all_assets(config: &Conf) -> Result<Vec<Asset>> {
         })
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
 
-    let sitemap = SitemapNode::new(&pages);
+    let sitemap_root = SitemapNode::new(&pages);
 
     for page in pages {
         let mut ctx = tera::Context::new();
         ctx.try_insert("config", &config)?;
-        ctx.try_insert("sitemap", &sitemap)?;
+        ctx.try_insert("sitemap_root", &sitemap_root)?;
         ctx.try_insert("current_path", &page.url_path)?;
         ctx.try_insert("content", &page.rendered)?;
 
